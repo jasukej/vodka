@@ -1,4 +1,4 @@
-# Virtual Offline Drum Kit App (VODKA)
+# Virtual Online Drum Kit App (VODKA)
 
 Transform any surface into a drum kit using computer vision and accelerometer data!
 
@@ -72,13 +72,6 @@ virtual-drum-kit/
 - **Person 1:** Hardware + Sensor Integration
 - **Person 2:** Computer Vision + ML
 - **Person 3:** Web UI + Sound Engine
-
-## Development Workflow
-
-1. Each person works in their respective directory
-2. Commit frequently with clear messages
-3. Use feature branches for major changes
-4. Test integration points early and often
 
 ## Hosted Model Integration
 

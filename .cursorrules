@@ -1,4 +1,4 @@
 # Do not paste comments
 ## Requirements
 - When inserting or pasting code, never add new comments.
-- Always assume the user does not want comments unless specifically instructed.
+- Always assume the user does not want comments or emojis unless specifically instructed.

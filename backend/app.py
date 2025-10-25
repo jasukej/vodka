@@ -24,6 +24,11 @@ def handle_connect():
 def handle_disconnect():
     print('Client disconnected')
 
+@socketio.on('video_frame')
+def handle_video_frame(data):
+    print(f'Received video frame at timestamp: {data.get("timestamp")}')
+    emit('frame_received', {'status': 'success', 'timestamp': data.get('timestamp')})
+
 if __name__ == '__main__':
     port = int(os.getenv('FLASK_PORT', 5000))
     socketio.run(app, host='0.0.0.0', port=port, debug=True)
