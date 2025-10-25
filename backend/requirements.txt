@@ -1,0 +1,25 @@
+# Web Framework
+flask==3.0.0
+flask-socketio==5.3.5
+flask-cors==4.0.0
+python-socketio==5.10.0
+eventlet==0.33.3
+
+# Computer Vision
+opencv-python==4.8.1.78
+numpy==1.24.3
+pillow==10.1.0
+
+# Hardware Communication
+pyserial==3.5
+
+# Audio
+pygame==2.5.2
+
+# ML (Optional - for hosted model)
+requests==2.31.0
+python-dotenv==1.0.0
+
+# Utilities
+scipy==1.11.4
+
