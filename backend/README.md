@@ -1,7 +1,7 @@
 ### Testing
 
 1. Test REST API
-    ``` 
+    ```
     curl http://localhost:5001/
     ```
 
