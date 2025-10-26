@@ -70,7 +70,7 @@ class EnhancedYOLOModel:
 
         return image
 
-    def segment_frame_enhanced(self, frame_data: str, conf_threshold=0.3, iou_threshold=0.45) -> Optional[Dict[str, Any]]:
+    def segment_frame_enhanced(self, frame_data: str, conf_threshold=0.15, iou_threshold=0.45) -> Optional[Dict[str, Any]]:
         """Enhanced segmentation with multiple inference passes and NMS tuning"""
         if not self.model_loaded:
             if not self.load_model('s'):  # Use small model by default for balance
@@ -125,9 +125,9 @@ class EnhancedYOLOModel:
             for i, seg in enumerate(segments):
                 seg['id'] = i
 
-            logger.info(f"Enhanced detection: {len(segments)} high-quality objects detected")
+            logger.info(f"✨ Enhanced detection: {len(segments)} high-quality material(s) detected")
             for seg in segments:
-                logger.info(f"  - {seg['class_name'].upper()} (conf: {seg['confidence']:.3f}, area: {seg['area']})")
+                logger.info(f"  🎯 {seg['class_name'].upper()} (conf: {seg['confidence']:.3f}, area: {seg['area']})")
 
             return {
                 'segments': segments,

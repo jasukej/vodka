@@ -75,7 +75,7 @@ const MaterialClassificationDebug = ({ calibrationData, lastHit }) => {
 
           <div className="mt-3 pt-2 border-t border-white/10">
             <div className="text-xs text-white/70">
-              <div>Object-aware classification enabled</div>
+              <div>Material-aware classification enabled</div>
               <div>Fallback logic for low confidence</div>
             </div>
           </div>

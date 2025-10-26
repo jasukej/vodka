@@ -3,7 +3,6 @@ import './App.css';
 import BLEControlPanel from './components/BLEControlPanel';
 import DrumPad from './components/DrumPad';
 import HitIndicator from './components/HitIndicator';
-import MaterialClassificationDebug from './components/MaterialClassificationDebug';
 import Visualizer from './components/Visualizer';
 import WebcamStream from './components/WebcamStream';
 import { useSocket } from './hooks/useSocket';
@@ -14,7 +13,6 @@ function App() {
   const [hits, setHits] = useState([]);
   const [lastHit, setLastHit] = useState(null);
   const [frameCount, setFrameCount] = useState(0);
-  const [calibrationData, setCalibrationData] = useState(null);
 
   useEffect(() => {
     if (socketService.socket) {
@@ -31,36 +29,21 @@ function App() {
         console.log('Segments:', data.segment_count);
 
         if (data.status === 'success' && data.segments && data.segments.length > 0) {
-          // Store calibration data for debug component
-          setCalibrationData(data);
-
-          console.log('%c📊 Detected Segments (Object-Aware):', 'font-weight: bold');
+          console.log('%c📊 Detected Materials:', 'font-weight: bold');
           console.table(data.segments.map(s => ({
             ID: s.id,
-            Object: s.class_name || 'unknown',
-            Material: s.material || 'unknown',
-            'Material Source': s.material === 'unknown' ? '❌ Failed' : '✅ Classified',
+            Material: s.class_name || 'unknown',
             X: s.bbox[0],
             Y: s.bbox[1],
             Width: s.bbox[2],
             Height: s.bbox[3],
-            'Obj Conf': (s.confidence * 100).toFixed(1) + '%',
-            Area: s.area || 0
+            Confidence: (s.confidence * 100).toFixed(1) + '%'
           })));
 
-          console.log('%c🎯 Objects found:', 'color: green; font-weight: bold');
+          console.log('%c🎯 Materials found:', 'color: green; font-weight: bold');
           data.segments.forEach((s, i) => {
-            const materialIcon = s.material === 'unknown' ? '❌' : '✅';
-            console.log(`   ${i + 1}. ${s.class_name || 'unknown'} → ${materialIcon} ${s.material} (${(s.confidence * 100).toFixed(0)}% confident)`);
+            console.log(`   ${i + 1}. ${s.class_name || 'unknown'} (${(s.confidence * 100).toFixed(0)}% confident)`);
           });
-
-          // Show classification quality
-          const successfulClassifications = data.segments.filter(s => s.material !== 'unknown').length;
-          const totalSegments = data.segments.length;
-          const accuracy = ((successfulClassifications / totalSegments) * 100).toFixed(1);
-          console.log(`%c🎯 Classification Success Rate: ${accuracy}% (${successfulClassifications}/${totalSegments})`,
-            'color: ' + (accuracy > 70 ? 'green' : accuracy > 40 ? 'orange' : 'red') + '; font-weight: bold');
-
         } else if (data.status === 'error') {
           console.error('Calibration failed:', data.message);
         }
@@ -72,10 +55,7 @@ function App() {
           console.log(`%c🥁 HIT LOCALIZED (${source})`, 'font-size: 16px; font-weight: bold; color: green');
 
           if (data.class_name) {
-            console.log('Object Hit:', data.class_name.toUpperCase());
-          }
-          if (data.material) {
-            console.log('Material:', data.material.toUpperCase());
+            console.log('Material Hit:', data.class_name.toUpperCase());
           }
           console.log('Drum Pad:', data.drum_pad.toUpperCase());
           console.log('Position:', `(${Math.round(data.position.x)}, ${Math.round(data.position.y)})`);

@@ -7,6 +7,7 @@ class AudioPlayer:
 
     def __init__(self):
         self.sound_cache: Dict[str, pygame.mixer.Sound] = {}
+        self.current_library = "drums"
         self._initialize_audio()
         self._load_sounds()
 
@@ -32,12 +33,18 @@ class AudioPlayer:
 
         for drum_pad, path in Config.DRUM_SOUND_MAPPING.items():
             try:
-                # Skip if already loaded (e.g., "default")
+                import os
+                if os.path.isdir(path):
+                    continue
                 if drum_pad not in self.sound_cache:
                     self.sound_cache[drum_pad] = pygame.mixer.Sound(path)
                     print(f"AudioPlayer: Loaded {drum_pad} -> {path}")
             except Exception as e:
                 print(f"AudioPlayer: Failed to load {drum_pad}: {e}")
+
+    def set_sound_library(self, library_name: str):
+        print(f"AudioPlayer: Library switching not implemented, using default sound mapping")
+        return True
 
     def play_sound(self, material: str, velocity: float = 1.0):
 

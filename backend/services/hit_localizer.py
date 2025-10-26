@@ -2,6 +2,7 @@ import logging
 from typing import Dict, Any, Optional, List
 import numpy as np
 from services.drumstick_detector import drumstick_detector
+from config import Config
 
 logger = logging.getLogger(__name__)
 
@@ -46,7 +47,20 @@ class HitLocalizer:
             return None
         
         segment_id = selected_segment.get('id', 0)
-        drum_pad = self.drum_mapping.get(segment_id % len(self.drum_mapping), 'snare')
+        class_name = selected_segment.get('class_name', 'unknown')
+        
+        # The YOLO model returns material classes directly (not COCO objects)
+        # Map material class to drum sound
+        material = class_name.lower()
+        
+        # Map variations to standard material names
+        material_mapping = {
+            'polished_stone': 'polishedstone',
+            'painted': 'paint'
+        }
+        standardized_material = material_mapping.get(material, material)
+        
+        drum_pad = Config.MATERIAL_TO_DRUM.get(standardized_material, 'default')
         
         bbox = selected_segment.get('bbox', [0, 0, 0, 0])
         position = {
@@ -61,7 +75,9 @@ class HitLocalizer:
             'confidence': selected_segment.get('confidence', 0.0),
             'timestamp': hit_timestamp,
             'bbox': bbox,
-            'drumstick_position': actual_hit_position
+            'drumstick_position': actual_hit_position,
+            'material': material,
+            'class_name': class_name
         }
         
         logger.info(f"Hit localized to {drum_pad} (segment {segment_id})")

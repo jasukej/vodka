@@ -41,10 +41,10 @@ def handle_calibrate_frame_enhanced(data):
         segment_count = segmentation_result.get('count', 0)
         segments = segmentation_result.get('segments', [])
 
-        logger.info(f'Enhanced segmentation complete: {segment_count} objects detected')
+        logger.info(f'✨ Enhanced segmentation complete: {segment_count} material(s) detected')
 
         if segment_count > 0:
-            logger.info('📊 Enhanced detected segments:')
+            logger.info('📊 Enhanced detected materials:')
             for i, seg in enumerate(segments[:5]):
                 bbox = seg.get('bbox', [0, 0, 0, 0])
                 conf = seg.get('confidence', 0)

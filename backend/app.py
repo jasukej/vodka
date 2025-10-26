@@ -19,8 +19,6 @@ from services.segmentation_store import segmentation_store
 from services.frame_buffer import frame_buffer
 from services.hit_localizer import hit_localizer
 from services.drumstick_detector import drumstick_detector
-from services.material_classifier import material_classifier
-from services.object_aware_material_classifier import object_aware_material_classifier
 
 # BLE Support
 try:
@@ -39,12 +37,8 @@ logger = logging.getLogger(__name__)
 app = Flask(__name__)
 app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', 'your-secret-key')
 CORS(app)
-
-# Initialize Socket.IO for frontend
-socketio = SocketIO(app, cors_allowed_origins="*", async_mode='threading', logger=False, engineio_logger=False)
-
-# Initialize Flask-Sock for ESP32 raw WebSocket
 sock = Sock(app)
+socketio = SocketIO(app, cors_allowed_origins="*")
 
 # Initialize services
 sound_mapper = SoundMapper()
@@ -98,22 +92,17 @@ async def handle_esp32_hit(impact_data: dict):
 
             segment_list = segments.get('segments', [])
             class_name = 'unknown'
-            material = 'unknown'
             if segment_id >= 0 and segment_id < len(segment_list):
                 class_name = segment_list[segment_id].get('class_name', 'unknown')
 
-            # Get material classification
-            material = segmentation_store.get_segment_material(segment_id) or 'unknown'
-
             logger.info(f'HIT LOCALIZED:')
-            logger.info(f'   Object: {class_name.upper()}')
-            logger.info(f'   Material: {material.upper()}')
+            logger.info(f'   Material: {class_name.upper()}')
             logger.info(f'   Drum Pad: {drum.upper()}')
             logger.info(f'   Confidence: {conf:.2f}')
             logger.info(f'   Position: ({pos.get("x", 0):.0f}, {pos.get("y", 0):.0f})')
 
-            # Play sound based on detected drum pad class and material
-            sound_mapper.audio_player.play_drum_sound(class_name, intensity)
+            # Play sound based on detected drum pad (already mapped from material in hit_localizer)
+            sound_mapper.audio_player.play_drum_sound(drum, intensity)
 
             # Emit to connected clients via SocketIO
             socketio.emit('hit_localized', {
@@ -126,7 +115,6 @@ async def handle_esp32_hit(impact_data: dict):
                 'segment_id': segment_id,
                 'bbox': bbox,
                 'class_name': class_name,
-                'material': material,
                 'drumstick_position': hit_result.get('drumstick_position'),
                 'source': 'esp32'
             })
@@ -227,7 +215,7 @@ def handle_drumstick_message(data):
             loop = asyncio.get_running_loop()
             # Create task and handle response in callback
             task = loop.create_task(sensor_ingestion.handle_message(json.dumps(data)))
-            
+
             def handle_response(task):
                 try:
                     response = task.result()
@@ -239,7 +227,7 @@ def handle_drumstick_message(data):
                             socketio.emit('impact_processed', {'data': response})
                 except Exception as e:
                     logger.error(f"Error handling sensor response: {e}")
-            
+
             task.add_done_callback(handle_response)
         except RuntimeError:
             # No event loop running, create one
@@ -321,10 +309,14 @@ def handle_ble_reset_stats():
 
 # ESP32 raw WebSocket endpoint via Flask-Sock
 @sock.route('/drumstick')
-def handle_esp32_websocket(ws):
-    """Handle raw WebSocket connection from ESP32"""
-    print('ESP32 Drumstick connected via raw WebSocket')
+def handle_websocket(ws):
+    global drumstick_ws
+    print('Drumstick connected via WebSocket')
+    drumstick_ws = ws
     sensor_ingestion.on_connect("ws_client")
+
+    # Broadcast to monitors
+    broadcast_to_clients({'type': 'sensor_connected'})
 
     try:
         while True:
@@ -332,11 +324,13 @@ def handle_esp32_websocket(ws):
             if message is None:
                 break
 
+            # Parse JSON message
             try:
                 data = json.loads(message)
-                print(f"Received from ESP32: {data}")
+                print(f"Received from drumstick: {data}")
 
-                msg_type = data.get('type', 'impact')
+                # Handle different message types
+                msg_type = data.get('type', 'impact')  # Default to impact
 
                 if msg_type == 'ping':
                     ws.send(json.dumps({'type': 'pong', 'timestamp': int(time.time() * 1000)}))
@@ -354,22 +348,59 @@ def handle_esp32_websocket(ws):
                         response = asyncio.run(sensor_ingestion.handle_message(json.dumps(data)))
 
                     if response:
+                        # Send ack back to ESP32
                         ws.send(json.dumps(response))
 
+                        # Broadcast to monitors
+                        if response.get('type') == 'ack' and 'material' in response:
+                            broadcast_to_clients({
+                                'type': 'impact_processed',
+                                'data': response
+                            })
+
             except json.JSONDecodeError:
-                print(f"Invalid JSON from ESP32: {message}")
+                print(f"Invalid JSON received: {message}")
             except Exception as e:
-                print(f"Error processing ESP32 message: {e}")
-                import traceback
-                traceback.print_exc()
+                print(f"Error processing message: {e}")
 
     except Exception as e:
-        print(f"ESP32 WebSocket error: {e}")
-        import traceback
-        traceback.print_exc()
+        print(f"WebSocket error: {e}")
     finally:
-        print('ESP32 Drumstick disconnected')
+        print('Drumstick disconnected')
+        drumstick_ws = None
         sensor_ingestion.on_disconnect()
+        broadcast_to_clients({'type': 'sensor_disconnected'})
+
+@sock.route('/monitor')
+def handle_monitor_websocket(ws):
+    print('Monitor client connected')
+    ws_clients.append(ws)
+
+    try:
+        ws.send(json.dumps({'type': 'connected', 'status': 'ok'}))
+        while True:
+            message = ws.receive()
+            if message is None:
+                break
+    except:
+        pass
+    finally:
+        if ws in ws_clients:
+            ws_clients.remove(ws)
+        print('Monitor client disconnected')
+
+def broadcast_to_clients(data):
+    disconnected = []
+    for ws in ws_clients:
+        try:
+            ws.send(json.dumps(data))
+        except:
+            disconnected.append(ws)
+
+    # Remove disconnected clients
+    for ws in disconnected:
+        if ws in ws_clients:
+            ws_clients.remove(ws)
 
 @socketio.on('video_frame')
 def handle_video_frame(data):
@@ -379,9 +410,8 @@ def handle_video_frame(data):
     if frame_data:
         frame_timestamp = timestamp / 1000.0 if timestamp else None
         frame_buffer.add_frame(frame_data, frame_timestamp)
-        # Uncomment below for debugging frame buffering
-        # buffer_size = frame_buffer.get_buffer_size()
-        # logger.info(f'📸 Frame buffered: timestamp={frame_timestamp:.3f}, size={len(frame_data)} bytes, buffer={buffer_size} frames')
+        buffer_size = frame_buffer.get_buffer_size()
+        logger.info(f'📸 Frame buffered: timestamp={frame_timestamp:.3f}, size={len(frame_data)} bytes, buffer={buffer_size} frames')
     else:
         logger.warning('Received video frame without frame data')
 
@@ -410,39 +440,21 @@ def handle_calibrate_frame(data):
         segment_count = segmentation_result.get('count', 0)
         segments = segmentation_result.get('segments', [])
 
-        logger.info(f'Segmentation complete: {segment_count} objects detected')
+        logger.info(f'✨ Material segmentation complete: {segment_count} material(s) detected')
 
         if segment_count > 0:
-            logger.info('📊 Detected segments:')
+            logger.info('📊 Detected materials:')
             for i, seg in enumerate(segments[:5]):
                 bbox = seg.get('bbox', [0, 0, 0, 0])
                 conf = seg.get('confidence', 0)
                 cls = seg.get('class', -1)
                 class_name = seg.get('class_name', 'unknown')
-                logger.info(f'   #{i}: {class_name.upper()} - bbox=({bbox[0]:3d}, {bbox[1]:3d}, {bbox[2]:3d}, {bbox[3]:3d}), conf={conf:.2f}')
+                logger.info(f'   #{i}: 🎯 {class_name.upper()} - bbox=({bbox[0]:3d}, {bbox[1]:3d}, {bbox[2]:3d}, {bbox[3]:3d}), conf={conf:.2f}')
             if len(segments) > 5:
                 logger.info(f'   ... and {len(segments) - 5} more')
 
         segmentation_store.store_segments(segmentation_result, timestamp / 1000.0 if timestamp else None)
         logger.info(f'Segments stored in memory')
-
-        # Run object-aware material classification (should be more accurate)
-        logger.info('Starting object-aware material classification...')
-        try:
-            materials = object_aware_material_classifier.classify_segments(frame_data, segmentation_result)
-            segmentation_store.store_materials(materials)
-            logger.info(f'Object-aware material classification complete: {len(materials)} segments classified')
-        except Exception as e:
-            logger.error(f'Object-aware material classification failed, falling back to standard: {e}')
-            try:
-                materials = material_classifier.classify_segments(frame_data, segmentation_result)
-                segmentation_store.store_materials(materials)
-                logger.info(f'Fallback material classification complete: {len(materials)} segments classified')
-            except Exception as e2:
-                logger.error(f'All material classification failed: {e2}')
-                import traceback
-                traceback.print_exc()
-                materials = {}
 
         emit('calibration_result', {
             'status': 'success',
@@ -455,8 +467,7 @@ def handle_calibrate_frame(data):
                     'bbox': seg.get('bbox'),
                     'confidence': seg.get('confidence'),
                     'class': seg.get('class'),
-                    'class_name': seg.get('class_name', 'unknown'),
-                    'material': materials.get(seg.get('id'), 'unknown')
+                    'class_name': seg.get('class_name', 'unknown')
                 }
                 for seg in segments
             ]
@@ -528,22 +539,17 @@ def handle_simulate_hit(data):
 
         segment_list = segments.get('segments', [])
         class_name = 'unknown'
-        material = 'unknown'
         if segment_id >= 0 and segment_id < len(segment_list):
             class_name = segment_list[segment_id].get('class_name', 'unknown')
 
-        # Get material classification
-        material = segmentation_store.get_segment_material(segment_id) or 'unknown'
-
         logger.info(f'HIT LOCALIZED:')
-        logger.info(f'   Object: {class_name.upper()}')
-        logger.info(f'   Material: {material.upper()}')
+        logger.info(f'   Material: {class_name.upper()}')
         logger.info(f'   Drum Pad: {drum.upper()}')
         logger.info(f'   Confidence: {conf:.2f}')
         logger.info(f'   Position: ({pos.get("x", 0):.0f}, {pos.get("y", 0):.0f})')
 
-        # Play sound based on detected drum pad class and material
-        sound_mapper.audio_player.play_drum_sound(class_name, intensity)
+        # Play sound based on detected drum pad (already mapped from material in hit_localizer)
+        sound_mapper.audio_player.play_drum_sound(drum, intensity)
 
         emit('hit_localized', {
             'status': 'success',
@@ -555,7 +561,6 @@ def handle_simulate_hit(data):
             'segment_id': segment_id,
             'bbox': bbox,
             'class_name': class_name,
-            'material': material,
             'drumstick_position': hit_result.get('drumstick_position'),
             'source': 'manual'
         })
