@@ -27,7 +27,7 @@ class SoundMapper:
         impact.material = self.cv_localizer.get_material_from_coordinate(x, y)
 
         # Step 4: Play sound
-        self.audio_player.play_sound(impact.material, impact.velocity)
+        self.audio_player.play_sound("plastic", impact.velocity)
 
         print(f"Impact: {impact.material} at ({x}, {y}), velocity={impact.velocity:.2f}")
 

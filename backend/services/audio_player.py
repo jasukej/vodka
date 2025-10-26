@@ -29,7 +29,7 @@ class AudioPlayer:
                 print(f"AudioPlayer: Loaded {material} -> {path}")
             except Exception as e:
                 print(f"AudioPlayer: Failed to load {material}: {e}")
-        
+
         for drum_pad, path in Config.DRUM_SOUND_MAPPING.items():
             try:
                 # Skip if already loaded (e.g., "default")
@@ -46,20 +46,20 @@ class AudioPlayer:
             print(f"AudioPlayer: Material '{material}' not found, using default")
             material = "default"
 
-        sound = self.sound_cache[material]
+        sound = self.sound_cache["plastic"]
 
         # Scale velocity to volume (0.0 to 1.0)
-        volume = min(1.0, velocity / 2.0)
-        sound.set_volume(volume)
+        volume = min(1.0, velocity)
+        sound.set_volume(50)
 
         # Play sound
         sound.play()
         print(f"Playing {material} sound at volume {volume:.2f}")
-    
+
     def play_drum_sound(self, drum_pad: str, intensity: float = 1.0):
         """Play sound based on detected drum pad/segment class"""
         drum_pad_key = drum_pad.lower() if drum_pad else "default"
-        
+
         if drum_pad_key not in self.sound_cache:
             print(f"AudioPlayer: Drum pad '{drum_pad}' not found, using default")
             drum_pad_key = "default"
@@ -67,7 +67,7 @@ class AudioPlayer:
         sound = self.sound_cache[drum_pad_key]
 
         volume = min(1.0, max(0.0, intensity))
-        sound.set_volume(volume)
+        sound.set_volume(50)
 
         # Play sound
         sound.play()

@@ -1,0 +1,4 @@
+# Add this to your existing requirements.txt for BLE support
+
+# BLE Support
+bleak>=0.22.0

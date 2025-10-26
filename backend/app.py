@@ -22,6 +22,15 @@ from services.drumstick_detector import drumstick_detector
 from services.material_classifier import material_classifier
 from services.object_aware_material_classifier import object_aware_material_classifier
 
+# BLE Support
+try:
+    from services.ble_drumstick_service import ble_drumstick_service
+    BLE_AVAILABLE = True
+except ImportError:
+    BLE_AVAILABLE = False
+    ble_drumstick_service = None
+    print("⚠️  BLE support not available. Install with: pip install bleak")
+
 load_dotenv()
 
 logging.basicConfig(level=logging.INFO)
@@ -134,11 +143,49 @@ async def handle_esp32_hit(impact_data: dict):
 # Connect sensor ingestion callbacks
 sensor_ingestion.set_hit_detected_callback(handle_esp32_hit)
 
+# Setup BLE callbacks if available
+if BLE_AVAILABLE and ble_drumstick_service:
+    def handle_ble_impact(impact_data):
+        """Handle impact from BLE drumstick"""
+        logger.info(f"🔵 BLE Impact received: {impact_data}")
+        # Use create_task instead of asyncio.run to avoid event loop conflict
+        try:
+            loop = asyncio.get_running_loop()
+            loop.create_task(handle_esp32_hit(impact_data))
+        except RuntimeError:
+            # No event loop running, create one
+            asyncio.run(handle_esp32_hit(impact_data))
+
+    def handle_ble_status(status_data):
+        """Handle status from BLE drumstick"""
+        logger.info(f"📊 BLE Status: {status_data}")
+        # Broadcast status to connected clients
+        socketio.emit('drumstick_status', status_data)
+
+    def handle_ble_connect():
+        """Handle BLE drumstick connection"""
+        logger.info("🟢 BLE Drumstick connected!")
+        socketio.emit('sensor_connected', {'status': 'connected', 'type': 'BLE'})
+
+    def handle_ble_disconnect():
+        """Handle BLE drumstick disconnection"""
+        logger.info("🔴 BLE Drumstick disconnected!")
+        socketio.emit('sensor_disconnected', {'status': 'disconnected', 'type': 'BLE'})
+
+    ble_drumstick_service.set_impact_callback(handle_ble_impact)
+    ble_drumstick_service.set_status_callback(handle_ble_status)
+    ble_drumstick_service.set_connect_callback(handle_ble_connect)
+    ble_drumstick_service.set_disconnect_callback(handle_ble_disconnect)
+
 # Store active connections
 drumstick_sid = None
 
 @app.route('/')
 def index():
+    ble_info = {}
+    if BLE_AVAILABLE and ble_drumstick_service:
+        ble_info = ble_drumstick_service.get_connection_info()
+
     return {
         "status": "VODKA api running",
         "mode": {
@@ -146,7 +193,9 @@ def index():
             "detection": "MOCK" if Config.MOCK_DETECTION else "REAL",
             "coordinates": "MOCK" if Config.MOCK_COORDINATES else "REAL"
         },
-        "sensor_connected": sensor_ingestion.is_connected()
+        "sensor_connected": sensor_ingestion.is_connected(),
+        "ble_available": BLE_AVAILABLE,
+        "ble_drumstick": ble_info
     }
 
 # ESP32 drumstick connection via Socket.IO
@@ -174,15 +223,33 @@ def handle_drumstick_message(data):
 
     elif msg_type == 'impact' or 'velocity' in data:
         # Process impact
-        response = asyncio.run(sensor_ingestion.handle_message(json.dumps(data)))
-
-        if response:
-            # Send ack back to ESP32
-            emit('impact_ack', response)
-
-            # Broadcast to all clients
-            if response.get('type') == 'ack' and 'material' in response:
-                socketio.emit('impact_processed', {'data': response})
+        try:
+            loop = asyncio.get_running_loop()
+            # Create task and handle response in callback
+            task = loop.create_task(sensor_ingestion.handle_message(json.dumps(data)))
+            
+            def handle_response(task):
+                try:
+                    response = task.result()
+                    if response:
+                        # Send ack back to ESP32
+                        socketio.emit('impact_ack', response)
+                        # Broadcast to all clients
+                        if response.get('type') == 'ack' and 'material' in response:
+                            socketio.emit('impact_processed', {'data': response})
+                except Exception as e:
+                    logger.error(f"Error handling sensor response: {e}")
+            
+            task.add_done_callback(handle_response)
+        except RuntimeError:
+            # No event loop running, create one
+            response = asyncio.run(sensor_ingestion.handle_message(json.dumps(data)))
+            if response:
+                # Send ack back to ESP32
+                emit('impact_ack', response)
+                # Broadcast to all clients
+                if response.get('type') == 'ack' and 'material' in response:
+                    socketio.emit('impact_processed', {'data': response})
 
 @socketio.on('disconnect')
 def handle_disconnect():
@@ -192,6 +259,65 @@ def handle_disconnect():
         drumstick_sid = None
         sensor_ingestion.on_disconnect()
         socketio.emit('sensor_disconnected', {'status': 'disconnected'})
+
+# BLE-specific events
+@socketio.on('ble_start_scan')
+def handle_ble_start_scan():
+    """Start BLE scanning for drumstick"""
+    if not BLE_AVAILABLE:
+        emit('ble_error', {'message': 'BLE not available'})
+        return
+
+    logger.info("🔍 Starting BLE scan...")
+    if ble_drumstick_service.start():
+        emit('ble_scan_started', {'status': 'scanning'})
+    else:
+        emit('ble_error', {'message': 'Failed to start BLE service'})
+
+@socketio.on('ble_stop_scan')
+def handle_ble_stop_scan():
+    """Stop BLE scanning"""
+    if BLE_AVAILABLE and ble_drumstick_service:
+        ble_drumstick_service.stop()
+        emit('ble_scan_stopped', {'status': 'stopped'})
+
+@socketio.on('ble_get_status')
+def handle_ble_get_status():
+    """Get BLE drumstick status"""
+    if BLE_AVAILABLE and ble_drumstick_service:
+        status = ble_drumstick_service.get_connection_info()
+        emit('ble_status', status)
+    else:
+        emit('ble_status', {'connected': False, 'ble_available': BLE_AVAILABLE})
+
+@socketio.on('ble_calibrate')
+def handle_ble_calibrate():
+    """Calibrate BLE drumstick"""
+    if BLE_AVAILABLE and ble_drumstick_service:
+        ble_drumstick_service.calibrate_drumstick()
+        emit('ble_command_sent', {'command': 'calibrate'})
+    else:
+        emit('ble_error', {'message': 'BLE not available or not connected'})
+
+@socketio.on('ble_set_threshold')
+def handle_ble_set_threshold(data):
+    """Set impact threshold for BLE drumstick"""
+    if not BLE_AVAILABLE or not ble_drumstick_service:
+        emit('ble_error', {'message': 'BLE not available'})
+        return
+
+    threshold = data.get('threshold', 15.0)
+    ble_drumstick_service.set_impact_threshold(threshold)
+    emit('ble_command_sent', {'command': 'set_threshold', 'threshold': threshold})
+
+@socketio.on('ble_reset_stats')
+def handle_ble_reset_stats():
+    """Reset BLE drumstick statistics"""
+    if BLE_AVAILABLE and ble_drumstick_service:
+        ble_drumstick_service.reset_statistics()
+        emit('ble_command_sent', {'command': 'reset_stats'})
+    else:
+        emit('ble_error', {'message': 'BLE not available or not connected'})
 
 # ESP32 raw WebSocket endpoint via Flask-Sock
 @sock.route('/drumstick')
@@ -216,7 +342,16 @@ def handle_esp32_websocket(ws):
                     ws.send(json.dumps({'type': 'pong', 'timestamp': int(time.time() * 1000)}))
 
                 elif msg_type == 'impact' or 'velocity' in data:
-                    response = asyncio.run(sensor_ingestion.handle_message(json.dumps(data)))
+                    try:
+                        loop = asyncio.get_running_loop()
+                        # For WebSocket, we need synchronous response, so use run_coroutine_threadsafe
+                        future = asyncio.run_coroutine_threadsafe(
+                            sensor_ingestion.handle_message(json.dumps(data)), loop
+                        )
+                        response = future.result(timeout=5.0)  # 5 second timeout
+                    except RuntimeError:
+                        # No event loop running, create one
+                        response = asyncio.run(sensor_ingestion.handle_message(json.dumps(data)))
 
                     if response:
                         ws.send(json.dumps(response))
@@ -506,17 +641,24 @@ if __name__ == '__main__':
     print(f"  Camera:      {'MOCK' if Config.MOCK_CAMERA else 'REAL'}")
     print(f"  Detection:   {'MOCK' if Config.MOCK_DETECTION else 'REAL'}")
     print(f"  Coordinates: {'MOCK' if Config.MOCK_COORDINATES else 'REAL'}")
+    print(f"  BLE Support: {'AVAILABLE' if BLE_AVAILABLE else 'NOT AVAILABLE'}")
     print(f"\nMaterial Regions:")
     for i, (x_min, y_min, x_max, y_max, material) in enumerate(Config.MATERIAL_REGIONS):
         print(f"  {i+1}. ({x_min:3d},{y_min:3d}) → ({x_max:3d},{y_max:3d}): {material}")
     print("="*60)
     print(f"Server running on http://0.0.0.0:8080")
-    print(f"\nSocket.IO enabled for all clients:")
-    print(f"  Frontend: ws://localhost:8080/socket.io/")
+    print(f"\nConnection Options:")
+    print(f"  WebSocket (Legacy): ws://192.168.0.106:8080/socket.io/")
     print(f"    Events: video_frame, calibrate_frame, simulate_hit")
-    print(f"  ESP32: ws://192.168.0.106:8080/socket.io/")
-    print(f"    Events: esp32_connect, esp32_message")
-    print(f"\nNote: ESP32 needs Socket.IO client library")
+    if BLE_AVAILABLE:
+        print(f"  BLE (Recommended): Bluetooth Low Energy")
+        print(f"    Device: VODKA-Drumstick")
+        print(f"    Auto-discovery and pairing")
+        # Start BLE service
+        ble_drumstick_service.start()
+        print(f"    Status: BLE service started")
+    else:
+        print(f"  BLE: Not available (install: pip install bleak)")
     print("="*60 + "\n")
 
     # TODO: Classify materials once at startup

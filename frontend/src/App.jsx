@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import './App.css';
+import BLEControlPanel from './components/BLEControlPanel';
 import DrumPad from './components/DrumPad';
 import HitIndicator from './components/HitIndicator';
 import MaterialClassificationDebug from './components/MaterialClassificationDebug';
@@ -148,6 +149,12 @@ function App() {
       <MaterialClassificationDebug
         calibrationData={calibrationData}
         lastHit={lastHit}
+      />
+
+      {/* BLE Control Panel */}
+      <BLEControlPanel
+        socketService={socketService}
+        connected={connected}
       />
 
       <header className="absolute top-0 left-0 right-0 z-50 flex items-center justify-between p-6 bg-gradient-to-b from-black/80 to-transparent">
