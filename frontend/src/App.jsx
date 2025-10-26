@@ -1,11 +1,10 @@
-import { useEffect, useState } from 'react';
-import './App.css';
-import DrumPad from './components/DrumPad';
-import HitIndicator from './components/HitIndicator';
-import MaterialClassificationDebug from './components/MaterialClassificationDebug';
-import Visualizer from './components/Visualizer';
-import WebcamStream from './components/WebcamStream';
+import { useState, useEffect } from 'react';
 import { useSocket } from './hooks/useSocket';
+import WebcamStream from './components/WebcamStream';
+import Visualizer from './components/Visualizer';
+import HitIndicator from './components/HitIndicator';
+import DrumPad from './components/DrumPad';
+import './App.css';
 
 function App() {
   const { connected, socketService } = useSocket();
@@ -13,7 +12,6 @@ function App() {
   const [hits, setHits] = useState([]);
   const [lastHit, setLastHit] = useState(null);
   const [frameCount, setFrameCount] = useState(0);
-  const [calibrationData, setCalibrationData] = useState(null);
 
   useEffect(() => {
     if (socketService.socket) {
@@ -28,38 +26,23 @@ function App() {
         console.log('%c CALIBRATION RESULT', 'font-size: 16px; font-weight: bold; color: blue');
         console.log('Status:', data.status);
         console.log('Segments:', data.segment_count);
-
+        
         if (data.status === 'success' && data.segments && data.segments.length > 0) {
-          // Store calibration data for debug component
-          setCalibrationData(data);
-
-          console.log('%c📊 Detected Segments (Object-Aware):', 'font-weight: bold');
+          console.log('%c📊 Detected Materials:', 'font-weight: bold');
           console.table(data.segments.map(s => ({
             ID: s.id,
-            Object: s.class_name || 'unknown',
-            Material: s.material || 'unknown',
-            'Material Source': s.material === 'unknown' ? '❌ Failed' : '✅ Classified',
+            Material: s.class_name || 'unknown',
             X: s.bbox[0],
             Y: s.bbox[1],
             Width: s.bbox[2],
             Height: s.bbox[3],
-            'Obj Conf': (s.confidence * 100).toFixed(1) + '%',
-            Area: s.area || 0
+            Confidence: (s.confidence * 100).toFixed(1) + '%'
           })));
-
-          console.log('%c🎯 Objects found:', 'color: green; font-weight: bold');
+          
+          console.log('%c🎯 Materials found:', 'color: green; font-weight: bold');
           data.segments.forEach((s, i) => {
-            const materialIcon = s.material === 'unknown' ? '❌' : '✅';
-            console.log(`   ${i + 1}. ${s.class_name || 'unknown'} → ${materialIcon} ${s.material} (${(s.confidence * 100).toFixed(0)}% confident)`);
+            console.log(`   ${i + 1}. ${s.class_name || 'unknown'} (${(s.confidence * 100).toFixed(0)}% confident)`);
           });
-
-          // Show classification quality
-          const successfulClassifications = data.segments.filter(s => s.material !== 'unknown').length;
-          const totalSegments = data.segments.length;
-          const accuracy = ((successfulClassifications / totalSegments) * 100).toFixed(1);
-          console.log(`%c🎯 Classification Success Rate: ${accuracy}% (${successfulClassifications}/${totalSegments})`,
-            'color: ' + (accuracy > 70 ? 'green' : accuracy > 40 ? 'orange' : 'red') + '; font-weight: bold');
-
         } else if (data.status === 'error') {
           console.error('Calibration failed:', data.message);
         }
@@ -69,29 +52,26 @@ function App() {
         if (data.status === 'success') {
           const source = data.source === 'esp32' ? '🎛️ ESP32' : '🖱️ MANUAL';
           console.log(`%c🥁 HIT LOCALIZED (${source})`, 'font-size: 16px; font-weight: bold; color: green');
-
+          
           if (data.class_name) {
-            console.log('Object Hit:', data.class_name.toUpperCase());
-          }
-          if (data.material) {
-            console.log('Material:', data.material.toUpperCase());
+            console.log('Material Hit:', data.class_name.toUpperCase());
           }
           console.log('Drum Pad:', data.drum_pad.toUpperCase());
           console.log('Position:', `(${Math.round(data.position.x)}, ${Math.round(data.position.y)})`);
           console.log('Confidence:', (data.confidence * 100).toFixed(1) + '%');
           console.log('Source:', data.source === 'esp32' ? 'ESP32 Sensor' : 'Manual Trigger');
-
+          
           if (data.segment_id !== undefined) {
             console.log('Segment ID:', data.segment_id);
           }
           if (data.bbox) {
             console.log('Bounding Box:', `[${data.bbox[0]}, ${data.bbox[1]}, ${data.bbox[2]}, ${data.bbox[3]}]`);
           }
-
+          
           if (data.source === 'esp32' && data.intensity !== undefined) {
             console.log('Hit Intensity:', (data.intensity * 100).toFixed(1) + '%');
           }
-
+          
           if (data.drumstick_position) {
             console.log('%c🥢 YOLOv8nano Detection:', 'font-size: 14px; font-weight: bold; color: orange');
             console.log('Drumstick Position:', `(${Math.round(data.drumstick_position.x)}, ${Math.round(data.drumstick_position.y)})`);
@@ -101,9 +81,9 @@ function App() {
             console.log('%c🥢 YOLOv8nano Detection:', 'font-size: 14px; font-weight: bold; color: orange');
             console.log('⚠️ No drumstick detected - using fallback to largest segment');
           }
-
-          const newHit = {
-            drum: data.drum_pad,
+          
+          const newHit = { 
+            drum: data.drum_pad, 
             position: data.position,
             intensity: data.intensity,
             timestamp: data.timestamp,
@@ -144,15 +124,9 @@ function App() {
 
   return (
     <div className="relative h-screen w-screen overflow-hidden bg-black">
-      {/* Material Classification Debug Panel */}
-      <MaterialClassificationDebug
-        calibrationData={calibrationData}
-        lastHit={lastHit}
-      />
-
       <header className="absolute top-0 left-0 right-0 z-50 flex items-center justify-between p-6 bg-gradient-to-b from-black/80 to-transparent">
         <h1 className="text-lg font-bold text-white">🥁 VODKA - Virtual Offline Drum Kit Application</h1>
-
+        
         <div className="flex items-center gap-4">
           <div className="flex items-center gap-2">
             <div className={`w-2 h-2 rounded-full ${connected ? 'bg-green-500' : 'bg-red-500'}`} />
@@ -160,7 +134,7 @@ function App() {
               {connected ? 'Connected' : 'Disconnected'}
             </span>
           </div>
-
+          
           <button
             onClick={handleToggleStream}
             disabled={!connected}
@@ -174,7 +148,7 @@ function App() {
       </header>
 
       <div className="absolute inset-0">
-        <WebcamStream
+        <WebcamStream 
           streaming={streaming}
           onFrameCapture={handleFrameCapture}
           fps={10}

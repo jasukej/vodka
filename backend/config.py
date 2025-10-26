@@ -52,21 +52,101 @@ class Config:
     ]
 
     # Legacy sound mapping (for backward compatibility)
+    # backend/config.py -> ../sounds (go up one level from backend)
+    backend_dir = os.path.dirname(__file__)
+    repo_root = os.path.dirname(backend_dir)
+    sounds_dir = os.path.join(repo_root, "sounds")
     SOUND_MAPPING = {
-        "wood": os.path.join(os.path.dirname(os.path.dirname(__file__)), "sounds", "bass.ogg"),
-        "metal": os.path.join(os.path.dirname(os.path.dirname(__file__)), "sounds", "iron_xylophone.ogg"),
-        "glass": os.path.join(os.path.dirname(os.path.dirname(__file__)), "sounds", "hat.ogg"),
-        "plastic": os.path.join(os.path.dirname(os.path.dirname(__file__)), "sounds", "snare.ogg"),
-        "default": os.path.join(os.path.dirname(os.path.dirname(__file__)), "sounds", "harp.ogg")
+        "wood": os.path.join(sounds_dir, "bass.ogg"),
+        "metal": os.path.join(sounds_dir, "iron_xylophone.ogg"),
+        "glass": os.path.join(sounds_dir, "hat.ogg"),
+        "plastic": os.path.join(sounds_dir, "snare.ogg"),
+        "default": os.path.join(sounds_dir, "harp.ogg")
     }
     
-    # Drum pad to sound mapping (based on detected object class)
+    # Drum pad to sound mapping (based on detected material class)
     DRUM_SOUND_MAPPING = {
-        "snare": os.path.join(os.path.dirname(os.path.dirname(__file__)), "sounds", "snare.ogg"),
-        "kick": os.path.join(os.path.dirname(os.path.dirname(__file__)), "sounds", "bass.ogg"),
-        "hihat": os.path.join(os.path.dirname(os.path.dirname(__file__)), "sounds", "hat.ogg"),
-        "hi-hat": os.path.join(os.path.dirname(os.path.dirname(__file__)), "sounds", "hat.ogg"),
-        "cymbal": os.path.join(os.path.dirname(os.path.dirname(__file__)), "sounds", "iron_xylophone.ogg"),
-        "tom": os.path.join(os.path.dirname(os.path.dirname(__file__)), "sounds", "bass.ogg"),
-        "default": os.path.join(os.path.dirname(os.path.dirname(__file__)), "sounds", "harp.ogg")
+        "snare": os.path.join(sounds_dir, "snare.ogg"),
+        "kick": os.path.join(sounds_dir, "bass.ogg"),
+        "hihat": os.path.join(sounds_dir, "hat.ogg"),
+        "hi-hat": os.path.join(sounds_dir, "hat.ogg"),
+        "cymbal": os.path.join(sounds_dir, "iron_xylophone.ogg"),
+        "tom": os.path.join(sounds_dir, "bass.ogg"),
+        "default": os.path.join(sounds_dir, "harp.ogg")
+    }
+    
+    # Material to drum sound mapping
+    MATERIAL_TO_DRUM = {
+        # Organic materials -> Snare (dry, snappy sound)
+        "hide": "snare",
+        "skin": "snare",
+        "fur": "snare",
+        "hair": "snare",
+        "foliage": "snare",
+        "bone": "snare",
+        "wicker": "snare",
+        "carpet": "snare",
+        "fabric": "snare",
+        
+        # Hard, resonant materials -> Kick (deep, bass sound)
+        "wood": "kick",
+        "treewood": "kick",
+        "concrete": "kick",
+        "stone": "kick",
+        "polishedstone": "kick",
+        "brick": "kick",
+        "tile": "kick",
+        "ceramic": "kick",
+        "engineeredstone": "kick",
+        "asphalt": "kick",
+        
+        # Metallic materials -> Cymbal (bright, shimmering sound)
+        "metal": "cymbal",
+        "gemstone": "cymbal",
+        "pearl": "cymbal",
+        
+        # Glass/crystal materials -> Hi-Hat (crisp, sharp sound)
+        "glass": "hihat",
+        "mirror": "hihat",
+        "ice": "hihat",
+        "clearplastic": "hihat",
+        
+        # Soft plastic materials -> Tom (medium, rounded sound)
+        "plastic": "tom",
+        "rubber": "tom",
+        "sponge": "tom",
+        "ceilingtile": "tom",
+        "styrofoam": "tom",
+        "soap": "tom",
+        
+        # Paper/cardboard materials -> Snare (dry, crackling sound)
+        "paper": "snare",
+        "cardboard": "snare",
+        "cork": "snare",
+        
+        # Other materials -> Default based on hardness
+        "water": "hihat",
+        "liquid": "hihat",
+        "fire": "cymbal",
+        "food": "tom",
+        "photograph": "snare",
+        "wallpaper": "snare",
+        "paint": "tom",
+        "wax": "tom",
+        "chalkboard": "snare",
+        "whiteboard": "snare",
+        "fiberglass": "tom",
+        
+        # Additional materials from YOLO model
+        "leather": "snare",
+        "other": "snare",
+        "sky": "hihat",
+        
+        # Catch-all for unknown materials
+        "none": "default",
+        "clutter": "tom",
+        "icannottell": "tom",
+        "notonlist": "default",
+        "badpolygon": "default",
+        "multiplematerials": "snare"
     }

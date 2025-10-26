@@ -6,7 +6,7 @@ class SocketService {
     this.connected = false;
   }
 
-  connect(url = window.location.origin) {
+  connect(url = 'http://localhost:5001') {
     if (this.socket?.connected) {
       return this.socket;
     }
@@ -81,7 +81,7 @@ const socketService = new SocketService();
 
 if (typeof window !== 'undefined') {
   window.socketService = socketService;
-
+  
   window.simulateHit = (intensity = 500, x = null, y = null) => {
     const hitData = {
       intensity,
@@ -90,35 +90,36 @@ if (typeof window !== 'undefined') {
     if (x !== null && y !== null) {
       hitData.position = { x, y };
     }
-
+    
     if (!socketService.isConnected()) {
       console.warn('⚠️  Socket not connected yet. Hit may not be processed.');
     }
-
+    
     socketService.emit('simulate_hit', hitData);
     console.log('🥁 Hit simulated:', hitData);
   };
-
+  
   window.testPositions = () => {
     console.log('%c Testing hit positions...', 'font-size: 14px; font-weight: bold; color: purple');
     console.log('This will test 4 random positions and show backend logs');
-
+    
     const positions = [
       { x: 150, y: 150 },
       { x: 400, y: 200 },
       { x: 200, y: 350 },
       { x: 320, y: 240 }
     ];
-
+    
     positions.forEach((pos, i) => {
       setTimeout(() => {
         console.log(`\nTest ${i + 1}: Position (${pos.x}, ${pos.y})`);
         simulateHit(500, pos.x, pos.y);
       }, i * 1500);
     });
-
+    
     console.log('\nCheck backend terminal for detailed mapping logs!');
   };
 }
 
 export default socketService;
+

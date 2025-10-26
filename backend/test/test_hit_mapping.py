@@ -38,7 +38,7 @@ def main():
     print("  1. Run calibration to get segments")
     print("  2. Wait 10 seconds")
     print("  3. Generate random hit coordinates")
-    print("  4. Map coordinates to detected objects")
+    print("  4. Map coordinates to detected materials")
     print("  5. Log what was hit")
     
     print_separator("STEP 1: Running Calibration")
@@ -58,16 +58,16 @@ def main():
     segment_count = segmentation_result.get('count', 0)
     segments = segmentation_result.get('segments', [])
     
-    logger.info(f"✅ Segmentation complete: {segment_count} objects detected")
+    logger.info(f"✅ Segmentation complete: {segment_count} material(s) detected")
     
     if segment_count == 0:
-        logger.warning("No objects detected, cannot test hit mapping")
+        logger.warning("No materials detected, cannot test hit mapping")
         return
     
     segmentation_store.store_segments(segmentation_result, time.time())
     logger.info("💾 Segments stored in memory")
     
-    print_separator("DETECTED OBJECTS")
+    print_separator("DETECTED MATERIALS")
     for i, seg in enumerate(segments):
         bbox = seg.get('bbox', [0, 0, 0, 0])
         conf = seg.get('confidence', 0)
@@ -126,8 +126,8 @@ def main():
                 seg = segments[segment_id]
                 class_name = seg.get('class_name', 'unknown')
                 seg_bbox = seg.get('bbox', [0, 0, 0, 0])
-                print(f"   Object: {class_name.upper()}")
-                print(f"   Object bounds: ({seg_bbox[0]}, {seg_bbox[1]}) - ({seg_bbox[0]+seg_bbox[2]}, {seg_bbox[1]+seg_bbox[3]})")
+                print(f"   Material: {class_name.upper()}")
+                print(f"   Material bounds: ({seg_bbox[0]}, {seg_bbox[1]}) - ({seg_bbox[0]+seg_bbox[2]}, {seg_bbox[1]+seg_bbox[3]})")
                 
                 if seg_bbox[0] <= hit_position['x'] <= seg_bbox[0]+seg_bbox[2] and \
                    seg_bbox[1] <= hit_position['y'] <= seg_bbox[1]+seg_bbox[3]:
@@ -135,7 +135,7 @@ def main():
                 else:
                     print(f"   ⚠️  Hit is OUTSIDE the {class_name} bounding box (fallback to largest)")
                 
-                logger.info(f"✅ Hit successfully mapped to {drum_pad} (object: {class_name})")
+                logger.info(f"✅ Hit successfully mapped to {drum_pad} (material: {class_name})")
         else:
             print(f"\n❌ HIT MISSED")
             print(f"   Coordinates: ({hit_position['x']}, {hit_position['y']})")

@@ -7,34 +7,43 @@ from typing import Dict, Any, Optional
 
 logger = logging.getLogger(__name__)
 
-COCO_CLASSES = [
-    'person', 'bicycle', 'car', 'motorcycle', 'airplane', 'bus', 'train', 'truck', 'boat',
-    'traffic light', 'fire hydrant', 'stop sign', 'parking meter', 'bench', 'bird', 'cat',
-    'dog', 'horse', 'sheep', 'cow', 'elephant', 'bear', 'zebra', 'giraffe', 'backpack',
-    'umbrella', 'handbag', 'tie', 'suitcase', 'frisbee', 'skis', 'snowboard', 'sports ball',
-    'kite', 'baseball bat', 'baseball glove', 'skateboard', 'surfboard', 'tennis racket',
-    'bottle', 'wine glass', 'cup', 'fork', 'knife', 'spoon', 'bowl', 'banana', 'apple',
-    'sandwich', 'orange', 'broccoli', 'carrot', 'hot dog', 'pizza', 'donut', 'cake', 'chair',
-    'couch', 'potted plant', 'bed', 'dining table', 'toilet', 'tv', 'laptop', 'mouse',
-    'remote', 'keyboard', 'cell phone', 'microwave', 'oven', 'toaster', 'sink',
-    'refrigerator', 'book', 'clock', 'vase', 'scissors', 'teddy bear', 'hair drier',
-    'toothbrush'
+MATERIAL_CLASSES = [
+    'brick', 'carpet', 'ceramic', 'fabric', 'foliage', 'food', 'glass', 'hair', 
+    'leather', 'metal', 'mirror', 'other', 'painted', 'paper', 'plastic', 
+    'polished_stone', 'skin', 'sky', 'stone', 'tile', 'wallpaper', 'water', 'wood'
 ]
 
 class LocalYOLOModel:
     def __init__(self):
         self.model = None
         self.model_loaded = False
-        self.class_names = COCO_CLASSES
+        self.class_names = MATERIAL_CLASSES
         
     def load_model(self):
         try:
             from ultralytics import YOLO
-            logger.info("Loading YOLOv8 model...")
-            self.model = YOLO('model/weights/yolov8n.pt')
-            self.class_names = self.model.names
+            logger.info("Loading custom YOLOv8 material detection model...")
+            self.model = YOLO('model/weights/material_classifier_best.pt')
+            
+            model_classes = self.model.names
+            if isinstance(model_classes, dict):
+                model_class_list = [model_classes[i] for i in sorted(model_classes.keys())]
+            else:
+                model_class_list = list(model_classes)
+            
+            logger.info(f"Model has {len(model_class_list)} classes: {model_class_list}")
+            
+            if 'person' in model_class_list or 'car' in model_class_list:
+                logger.warning("WARNING: Model appears to have COCO classes instead of materials!")
+                logger.warning("Expected material classes, but found COCO classes.")
+                logger.warning("Using predefined material classes instead.")
+                self.class_names = MATERIAL_CLASSES
+            else:
+                logger.info("Using model's trained material classes")
+                self.class_names = model_classes
+            
             self.model_loaded = True
-            logger.info(f"YOLOv8 model loaded with {len(self.class_names)} classes")
+            logger.info(f"Material detection model ready with {len(self.class_names)} material classes")
             return True
         except ImportError:
             logger.error("Ultralytics not installed. Run: pip install ultralytics")
@@ -72,11 +81,14 @@ class LocalYOLOModel:
                     })
             
             if len(segments) > 0:
-                logger.info(f"Detected {len(segments)} objects:")
+                logger.info(f"✨ Detected {len(segments)} material(s):")
                 for seg in segments:
-                    logger.info(f"  - {seg['class_name'].upper()} (conf: {seg['confidence']:.2f})")
+                    material = seg['class_name'].upper()
+                    confidence = seg['confidence']
+                    area = seg['area']
+                    logger.info(f"  🎯 {material} (confidence: {confidence:.2f}, area: {area}px)")
             else:
-                logger.warning(f"No objects detected in frame")
+                logger.warning(f"⚠️  No materials detected in frame")
             
             return {
                 'segments': segments,
@@ -92,10 +104,12 @@ class LocalYOLOModel:
         logger.warning("Using mock segmentation (model not available)")
         
         segments = [
-            {'id': 0, 'bbox': [100, 100, 200, 150], 'confidence': 0.85, 'area': 30000, 'class': 0, 'class_name': 'person'},
-            {'id': 1, 'bbox': [320, 100, 180, 160], 'confidence': 0.78, 'area': 28800, 'class': 56, 'class_name': 'chair'},
-            {'id': 2, 'bbox': [100, 280, 190, 140], 'confidence': 0.92, 'area': 26600, 'class': 63, 'class_name': 'laptop'},
+            {'id': 0, 'bbox': [100, 100, 200, 150], 'confidence': 0.85, 'area': 30000, 'class': 22, 'class_name': 'wood'},
+            {'id': 1, 'bbox': [320, 100, 180, 160], 'confidence': 0.78, 'area': 28800, 'class': 9, 'class_name': 'metal'},
+            {'id': 2, 'bbox': [100, 280, 190, 140], 'confidence': 0.92, 'area': 26600, 'class': 6, 'class_name': 'glass'},
         ]
+        
+        logger.info(f"✨ Mock detection: {len(segments)} material(s)")
         
         return {
             'segments': segments,

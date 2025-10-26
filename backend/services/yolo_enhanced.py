@@ -125,9 +125,9 @@ class EnhancedYOLOModel:
             for i, seg in enumerate(segments):
                 seg['id'] = i
 
-            logger.info(f"Enhanced detection: {len(segments)} high-quality objects detected")
+            logger.info(f"✨ Enhanced detection: {len(segments)} high-quality material(s) detected")
             for seg in segments:
-                logger.info(f"  - {seg['class_name'].upper()} (conf: {seg['confidence']:.3f}, area: {seg['area']})")
+                logger.info(f"  🎯 {seg['class_name'].upper()} (conf: {seg['confidence']:.3f}, area: {seg['area']})")
 
             return {
                 'segments': segments,
