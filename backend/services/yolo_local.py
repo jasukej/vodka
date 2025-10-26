@@ -61,7 +61,7 @@ class LocalYOLOModel:
             image_bytes = base64.b64decode(frame_data.split(',')[1] if ',' in frame_data else frame_data)
             image = Image.open(BytesIO(image_bytes))
             
-            results = self.model(image, verbose=False, conf=0.25)
+            results = self.model(image, verbose=False, conf=0.15)
             
             segments = []
             if hasattr(results[0], 'boxes') and results[0].boxes is not None:

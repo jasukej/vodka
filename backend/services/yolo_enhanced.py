@@ -70,7 +70,7 @@ class EnhancedYOLOModel:
 
         return image
 
-    def segment_frame_enhanced(self, frame_data: str, conf_threshold=0.3, iou_threshold=0.45) -> Optional[Dict[str, Any]]:
+    def segment_frame_enhanced(self, frame_data: str, conf_threshold=0.15, iou_threshold=0.45) -> Optional[Dict[str, Any]]:
         """Enhanced segmentation with multiple inference passes and NMS tuning"""
         if not self.model_loaded:
             if not self.load_model('s'):  # Use small model by default for balance

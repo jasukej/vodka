@@ -10,12 +10,12 @@ class EnhancedConfig:
     # ============ ENHANCED DETECTION CONFIG ============
 
     # YOLO Model Configuration
-    YOLO_CONFIDENCE_THRESHOLD = float(os.getenv('YOLO_CONFIDENCE_THRESHOLD', '0.3'))
+    YOLO_CONFIDENCE_THRESHOLD = float(os.getenv('YOLO_CONFIDENCE_THRESHOLD', '0.10'))
     YOLO_IOU_THRESHOLD = float(os.getenv('YOLO_IOU_THRESHOLD', '0.45'))
-    YOLO_MIN_AREA = int(os.getenv('YOLO_MIN_AREA', '500'))
+    YOLO_MIN_AREA = int(os.getenv('YOLO_MIN_AREA', '300'))
     
     # Material Detection Configuration
-    MATERIAL_CONFIDENCE_THRESHOLD = float(os.getenv('MATERIAL_CONFIDENCE_THRESHOLD', '0.25'))
+    MATERIAL_CONFIDENCE_THRESHOLD = float(os.getenv('MATERIAL_CONFIDENCE_THRESHOLD', '0.15'))
 
     # ============ IMAGE ENHANCEMENT CONFIG ============
 
