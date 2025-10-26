@@ -5,6 +5,8 @@ import socketService from '../services/socketService';
 const WebcamStream = ({ onFrameCapture, streaming, fps = 10 }) => {
   const { videoRef, isStreaming, error, startWebcam, stopWebcam, captureFrame } = useWebcam();
   const intervalRef = useRef(null);
+  const calibrationRef = useRef(null);
+  const hasCalibrated = useRef(false);
 
   useEffect(() => {
     if (streaming && isStreaming && socketService.isConnected()) {
@@ -32,12 +34,43 @@ const WebcamStream = ({ onFrameCapture, streaming, fps = 10 }) => {
   }, [streaming, isStreaming, fps, captureFrame, onFrameCapture]);
 
   useEffect(() => {
-    if (streaming) {
-      startWebcam();
-    } else {
+    startWebcam();
+    
+    return () => {
       stopWebcam();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    if (streaming) {
+      hasCalibrated.current = false;
+      
+      calibrationRef.current = setTimeout(() => {
+        const frameData = captureFrame();
+        if (frameData && socketService.isConnected()) {
+          console.log('%cSending calibration frame', 'font-size: 14px; font-weight: bold; color: blue');
+          socketService.emit('calibrate_frame', { 
+            frame: frameData, 
+            timestamp: Date.now() 
+          });
+          hasCalibrated.current = true;
+        }
+      }, 2000);
+    } else {
+      hasCalibrated.current = false;
+      if (calibrationRef.current) {
+        clearTimeout(calibrationRef.current);
+        calibrationRef.current = null;
+      }
     }
-  }, [streaming]);
+    
+    return () => {
+      if (calibrationRef.current) {
+        clearTimeout(calibrationRef.current);
+      }
+    };
+  }, [streaming, captureFrame]);
 
   return (
     <div className="relative w-full h-full">
@@ -54,10 +87,15 @@ const WebcamStream = ({ onFrameCapture, streaming, fps = 10 }) => {
         className="w-full h-full object-cover bg-black"
         style={{ transform: 'scaleX(-1)' }}
       />
-      {isStreaming && (
+      {streaming && isStreaming && (
         <div className="absolute top-6 left-6 bg-red-600/80 backdrop-blur-sm text-white px-3 py-1.5 rounded-full text-xs font-bold border border-red-400/20 flex items-center gap-1.5">
           <span className="w-2 h-2 bg-white rounded-full animate-pulse" />
-          LIVE
+          STREAMING
+        </div>
+      )}
+      {!streaming && isStreaming && (
+        <div className="absolute top-6 left-6 bg-gray-600/80 backdrop-blur-sm text-white px-3 py-1.5 rounded-full text-xs font-bold border border-gray-400/20">
+          PREVIEW
         </div>
       )}
     </div>

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 
 export const useWebcam = () => {
   const videoRef = useRef(null);
@@ -6,12 +6,17 @@ export const useWebcam = () => {
   const [error, setError] = useState(null);
   const [isStreaming, setIsStreaming] = useState(false);
 
-  const startWebcam = async () => {
+  const startWebcam = useCallback(async () => {
+    if (stream) {
+      console.log('Webcam already started');
+      return;
+    }
+    
     try {
       const mediaStream = await navigator.mediaDevices.getUserMedia({
         video: {
-          width: { ideal: 1280 },
-          height: { ideal: 720 },
+          width: { ideal: 640 },
+          height: { ideal: 480 },
           facingMode: 'user'
         },
         audio: false
@@ -28,9 +33,9 @@ export const useWebcam = () => {
       setError(err.message);
       setIsStreaming(false);
     }
-  };
+  }, [stream]);
 
-  const stopWebcam = () => {
+  const stopWebcam = useCallback(() => {
     if (stream) {
       stream.getTracks().forEach(track => track.stop());
       setStream(null);
@@ -39,9 +44,9 @@ export const useWebcam = () => {
         videoRef.current.srcObject = null;
       }
     }
-  };
+  }, [stream]);
 
-  const captureFrame = () => {
+  const captureFrame = useCallback(() => {
     if (!videoRef.current || !isStreaming) return null;
 
     const video = videoRef.current;
@@ -52,7 +57,7 @@ export const useWebcam = () => {
     ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
     
     return canvas.toDataURL('image/jpeg', 0.8);
-  };
+  }, [isStreaming]);
 
   useEffect(() => {
     return () => {

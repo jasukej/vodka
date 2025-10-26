@@ -22,6 +22,66 @@ function App() {
         setLastHit(newHit);
       });
 
+      socketService.on('calibration_result', (data) => {
+        console.log('%c CALIBRATION RESULT', 'font-size: 16px; font-weight: bold; color: blue');
+        console.log('Status:', data.status);
+        console.log('Segments:', data.segment_count);
+        
+        if (data.status === 'success' && data.segments && data.segments.length > 0) {
+          console.log('%c📊 Detected Segments:', 'font-weight: bold');
+          console.table(data.segments.map(s => ({
+            ID: s.id,
+            Object: s.class_name || 'unknown',
+            X: s.bbox[0],
+            Y: s.bbox[1],
+            Width: s.bbox[2],
+            Height: s.bbox[3],
+            Confidence: (s.confidence * 100).toFixed(1) + '%'
+          })));
+          
+          console.log('%c🎯 Objects found:', 'color: green; font-weight: bold');
+          data.segments.forEach((s, i) => {
+            console.log(`   ${i + 1}. ${s.class_name || 'unknown'} (${(s.confidence * 100).toFixed(0)}% confident)`);
+          });
+        } else if (data.status === 'error') {
+          console.error('Calibration failed:', data.message);
+        }
+      });
+
+      socketService.on('hit_localized', (data) => {
+        if (data.status === 'success') {
+          console.log('%c🥁 HIT LOCALIZED', 'font-size: 16px; font-weight: bold; color: green');
+          
+          if (data.class_name) {
+            console.log('Object Hit:', data.class_name.toUpperCase());
+          }
+          console.log('Drum Pad:', data.drum_pad.toUpperCase());
+          console.log('Position:', `(${Math.round(data.position.x)}, ${Math.round(data.position.y)})`);
+          console.log('Confidence:', (data.confidence * 100).toFixed(1) + '%');
+          
+          if (data.segment_id !== undefined) {
+            console.log('Segment ID:', data.segment_id);
+          }
+          if (data.bbox) {
+            console.log('Bounding Box:', `[${data.bbox[0]}, ${data.bbox[1]}, ${data.bbox[2]}, ${data.bbox[3]}]`);
+          }
+          
+          const newHit = { 
+            drum: data.drum_pad, 
+            position: data.position,
+            intensity: data.intensity,
+            timestamp: data.timestamp,
+            segment_id: data.segment_id,
+            class_name: data.class_name
+          };
+          setHits(prev => [...prev, newHit]);
+          setLastHit(newHit);
+        } else {
+          console.error('%c❌ Hit localization failed', 'color: red; font-weight: bold');
+          console.error('Error:', data.message);
+        }
+      });
+
       socketService.on('drum_position', (data) => {
         console.log('Drum position:', data);
       });
@@ -30,6 +90,8 @@ function App() {
     return () => {
       if (socketService.socket) {
         socketService.off('hit_detected');
+        socketService.off('calibration_result');
+        socketService.off('hit_localized');
         socketService.off('drum_position');
       }
     };
