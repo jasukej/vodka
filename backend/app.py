@@ -35,8 +35,92 @@ socketio = SocketIO(app, cors_allowed_origins="*")
 sound_mapper = SoundMapper()
 sensor_ingestion = SensorIngestion()
 
-# Connect sensor ingestion to sound mapper
-sensor_ingestion.set_impact_callback(sound_mapper.process_impact)
+async def handle_esp32_hit(impact_data: dict):
+    """Handle hit detection from ESP32 sensor and trigger vision-based localization"""
+    try:
+        timestamp = impact_data.get('timestamp', int(time.time() * 1000))
+        velocity = impact_data.get('velocity', 0)
+        magnitude = impact_data.get('magnitude', 0)
+        
+        # Calculate intensity from velocity (normalize to 0-1 range)
+        intensity = min(velocity / 100.0, 1.0) if velocity > 0 else 0.5
+        
+        logger.info(f'🥁 ESP32 HIT DETECTED: velocity={velocity}, magnitude={magnitude}, intensity={intensity:.2f}')
+        
+        # Trigger the same logic as simulate_hit
+        if not segmentation_store.is_calibrated():
+            logger.warning('System not calibrated - cannot localize hit')
+            return
+        
+        latest_frame = frame_buffer.get_latest_frame()
+        if not latest_frame:
+            logger.warning('No frame available in buffer')
+            return
+        
+        frame_timestamp = latest_frame.get('timestamp', 0)
+        frame_data_size = len(latest_frame.get('frame', ''))
+        frame_data_hash = hash(latest_frame.get('frame', '')) % 1000000
+        logger.info(f'📸 Using frame from buffer: timestamp={frame_timestamp:.3f}, size={frame_data_size} bytes, hash={frame_data_hash}')
+        
+        segments = segmentation_store.get_segments()
+        segment_count = len(segments.get('segments', []))
+        logger.info(f'Using calibration with {segment_count} segments')
+
+        logger.info('🥢 Running YOLOv8nano inference to detect drumstick...')
+        hit_result = hit_localizer.localize_hit(
+            latest_frame,
+            segments,
+            timestamp / 1000.0,
+            None
+        )
+        
+        if hit_result:
+            drum = hit_result['drum_pad']
+            conf = hit_result['confidence']
+            pos = hit_result['position']
+            segment_id = hit_result.get('segment_id', -1)
+            bbox = hit_result.get('bbox', [])
+            
+            segment_list = segments.get('segments', [])
+            class_name = 'unknown'
+            if segment_id >= 0 and segment_id < len(segment_list):
+                class_name = segment_list[segment_id].get('class_name', 'unknown')
+            
+            logger.info(f'HIT LOCALIZED:')
+            logger.info(f'   Object: {class_name.upper()}')
+            logger.info(f'   Drum Pad: {drum.upper()}')
+            logger.info(f'   Confidence: {conf:.2f}')
+            logger.info(f'   Position: ({pos.get("x", 0):.0f}, {pos.get("y", 0):.0f})')
+            
+            # Play sound based on detected drum pad class
+            sound_mapper.audio_player.play_drum_sound(class_name, intensity)
+            
+            # Emit to connected clients via SocketIO
+            socketio.emit('hit_localized', {
+                'status': 'success',
+                'drum_pad': drum,
+                'position': pos,
+                'confidence': conf,
+                'intensity': intensity,
+                'timestamp': timestamp,
+                'segment_id': segment_id,
+                'bbox': bbox,
+                'class_name': class_name,
+                'drumstick_position': hit_result.get('drumstick_position'),
+                'source': 'esp32'
+            })
+        else:
+            logger.error('Hit localization failed')
+        
+        logger.info('=' * 70)
+        
+    except Exception as e:
+        logger.error(f'Error handling ESP32 hit: {e}')
+        import traceback
+        traceback.print_exc()
+
+# Connect sensor ingestion callbacks
+sensor_ingestion.set_hit_detected_callback(handle_esp32_hit)
 
 # Store active WebSocket connections
 ws_clients = []
@@ -285,7 +369,10 @@ def handle_simulate_hit(data):
         logger.info(f'   Drum Pad: {drum.upper()}')
         logger.info(f'   Confidence: {conf:.2f}')
         logger.info(f'   Position: ({pos.get("x", 0):.0f}, {pos.get("y", 0):.0f})')
-
+        
+        # Play sound based on detected drum pad class
+        sound_mapper.audio_player.play_drum_sound(class_name, intensity)
+        
         emit('hit_localized', {
             'status': 'success',
             'drum_pad': drum,
@@ -296,7 +383,8 @@ def handle_simulate_hit(data):
             'segment_id': segment_id,
             'bbox': bbox,
             'class_name': class_name,
-            'drumstick_position': hit_result.get('drumstick_position')
+            'drumstick_position': hit_result.get('drumstick_position'),
+            'source': 'manual'
         })
     else:
         logger.error('Hit localization failed')

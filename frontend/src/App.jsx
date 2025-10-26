@@ -50,7 +50,8 @@ function App() {
 
       socketService.on('hit_localized', (data) => {
         if (data.status === 'success') {
-          console.log('%c🥁 HIT LOCALIZED', 'font-size: 16px; font-weight: bold; color: green');
+          const source = data.source === 'esp32' ? '🎛️ ESP32' : '🖱️ MANUAL';
+          console.log(`%c🥁 HIT LOCALIZED (${source})`, 'font-size: 16px; font-weight: bold; color: green');
           
           if (data.class_name) {
             console.log('Object Hit:', data.class_name.toUpperCase());
@@ -58,6 +59,7 @@ function App() {
           console.log('Drum Pad:', data.drum_pad.toUpperCase());
           console.log('Position:', `(${Math.round(data.position.x)}, ${Math.round(data.position.y)})`);
           console.log('Confidence:', (data.confidence * 100).toFixed(1) + '%');
+          console.log('Source:', data.source === 'esp32' ? 'ESP32 Sensor' : 'Manual Trigger');
           
           if (data.segment_id !== undefined) {
             console.log('Segment ID:', data.segment_id);
@@ -66,7 +68,10 @@ function App() {
             console.log('Bounding Box:', `[${data.bbox[0]}, ${data.bbox[1]}, ${data.bbox[2]}, ${data.bbox[3]}]`);
           }
           
-          // TODO: delete later
+          if (data.source === 'esp32' && data.intensity !== undefined) {
+            console.log('Hit Intensity:', (data.intensity * 100).toFixed(1) + '%');
+          }
+          
           if (data.drumstick_position) {
             console.log('%c🥢 YOLOv8nano Detection:', 'font-size: 14px; font-weight: bold; color: orange');
             console.log('Drumstick Position:', `(${Math.round(data.drumstick_position.x)}, ${Math.round(data.drumstick_position.y)})`);

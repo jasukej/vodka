@@ -7,9 +7,13 @@ class SensorIngestion:
     def __init__(self):
         self.connected_client = None
         self.on_impact_callback: Optional[Callable[[dict], Awaitable[dict]]] = None
+        self.on_hit_detected_callback: Optional[Callable[[dict], Awaitable[None]]] = None
 
     def set_impact_callback(self, callback: Callable[[dict], Awaitable[dict]]):
         self.on_impact_callback = callback
+    
+    def set_hit_detected_callback(self, callback: Callable[[dict], Awaitable[None]]):
+        self.on_hit_detected_callback = callback
 
     def parse_sensor_message(self, raw_message: str) -> Optional[dict]:
         try:
@@ -28,12 +32,9 @@ class SensorIngestion:
         msg_type = message.get("type")
 
         if msg_type == "impact":
-            # Process impact through callback
             if self.on_impact_callback:
                 result = await self.on_impact_callback(message)
-
                 if result:
-                    # Send acknowledgment
                     return {
                         "type": "ack",
                         "material": result["material"],
@@ -41,6 +42,8 @@ class SensorIngestion:
                         "velocity": result["velocity"],
                         "id": result["id"]
                     }
+            if self.on_hit_detected_callback:
+                await self.on_hit_detected_callback(message)
             return {"type": "ack", "status": "received"}
 
         elif msg_type == "ping":

@@ -24,8 +24,20 @@ class AudioPlayer:
 
     def _load_sounds(self):
         for material, path in Config.SOUND_MAPPING.items():
-          self.sound_cache[material] = pygame.mixer.Sound(path)
-          print(f"AudioPlayer: Loaded {path}")
+            try:
+                self.sound_cache[material] = pygame.mixer.Sound(path)
+                print(f"AudioPlayer: Loaded {material} -> {path}")
+            except Exception as e:
+                print(f"AudioPlayer: Failed to load {material}: {e}")
+        
+        for drum_pad, path in Config.DRUM_SOUND_MAPPING.items():
+            try:
+                # Skip if already loaded (e.g., "default")
+                if drum_pad not in self.sound_cache:
+                    self.sound_cache[drum_pad] = pygame.mixer.Sound(path)
+                    print(f"AudioPlayer: Loaded {drum_pad} -> {path}")
+            except Exception as e:
+                print(f"AudioPlayer: Failed to load {drum_pad}: {e}")
 
     def play_sound(self, material: str, velocity: float = 1.0):
 
@@ -43,6 +55,23 @@ class AudioPlayer:
         # Play sound
         sound.play()
         print(f"Playing {material} sound at volume {volume:.2f}")
+    
+    def play_drum_sound(self, drum_pad: str, intensity: float = 1.0):
+        """Play sound based on detected drum pad/segment class"""
+        drum_pad_key = drum_pad.lower() if drum_pad else "default"
+        
+        if drum_pad_key not in self.sound_cache:
+            print(f"AudioPlayer: Drum pad '{drum_pad}' not found, using default")
+            drum_pad_key = "default"
+
+        sound = self.sound_cache[drum_pad_key]
+
+        volume = min(1.0, max(0.0, intensity))
+        sound.set_volume(volume)
+
+        # Play sound
+        sound.play()
+        print(f"🔊 Playing {drum_pad} sound at volume {volume:.2f}")
 
     def stop_all(self):
         pygame.mixer.stop()

@@ -6,6 +6,7 @@ from PIL import Image
 import numpy as np
 from typing import Dict, Any, Optional, List
 from ultralytics import YOLO
+from config import Config
 
 logger = logging.getLogger(__name__)
 
@@ -180,6 +181,4 @@ class DrumstickDetector:
             'image_size': [640, 480]
         }
 
-# Initialize with config from Config class
-from config import Config
 drumstick_detector = DrumstickDetector(model_size=Config.DRUMSTICK_MODEL_SIZE)

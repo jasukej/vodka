@@ -51,10 +51,22 @@ class Config:
         (320, 240, 640, 480, "plastic"),    # Bottom-right quadrant
     ]
 
+    # Legacy sound mapping (for backward compatibility)
     SOUND_MAPPING = {
         "wood": os.path.join(os.path.dirname(os.path.dirname(__file__)), "sounds", "bass.ogg"),
         "metal": os.path.join(os.path.dirname(os.path.dirname(__file__)), "sounds", "iron_xylophone.ogg"),
         "glass": os.path.join(os.path.dirname(os.path.dirname(__file__)), "sounds", "hat.ogg"),
         "plastic": os.path.join(os.path.dirname(os.path.dirname(__file__)), "sounds", "snare.ogg"),
+        "default": os.path.join(os.path.dirname(os.path.dirname(__file__)), "sounds", "harp.ogg")
+    }
+    
+    # Drum pad to sound mapping (based on detected object class)
+    DRUM_SOUND_MAPPING = {
+        "snare": os.path.join(os.path.dirname(os.path.dirname(__file__)), "sounds", "snare.ogg"),
+        "kick": os.path.join(os.path.dirname(os.path.dirname(__file__)), "sounds", "bass.ogg"),
+        "hihat": os.path.join(os.path.dirname(os.path.dirname(__file__)), "sounds", "hat.ogg"),
+        "hi-hat": os.path.join(os.path.dirname(os.path.dirname(__file__)), "sounds", "hat.ogg"),
+        "cymbal": os.path.join(os.path.dirname(os.path.dirname(__file__)), "sounds", "iron_xylophone.ogg"),
+        "tom": os.path.join(os.path.dirname(os.path.dirname(__file__)), "sounds", "bass.ogg"),
         "default": os.path.join(os.path.dirname(os.path.dirname(__file__)), "sounds", "harp.ogg")
     }
