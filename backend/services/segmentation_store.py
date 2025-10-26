@@ -9,6 +9,7 @@ class SegmentationStore:
     def __init__(self):
         self._segments = None
         self._timestamp = None
+        self._materials = None  # Material classification results
         self._lock = threading.Lock()
         
     def store_segments(self, segments: Dict[str, Any], timestamp: float = None) -> None:
@@ -36,13 +37,32 @@ class SegmentationStore:
         with self._lock:
             self._segments = None
             self._timestamp = None
+            self._materials = None
             logger.info("Cleared segmentation store")
-    
+
     def get_segment_count(self) -> int:
         with self._lock:
             if self._segments is None:
                 return 0
             return len(self._segments.get('segments', []))
+
+    def store_materials(self, materials: Dict[int, str]) -> None:
+        """Store material classification results."""
+        with self._lock:
+            self._materials = materials
+            logger.info(f"Stored material classifications for {len(materials)} segments")
+
+    def get_materials(self) -> Optional[Dict[int, str]]:
+        """Get material classification results."""
+        with self._lock:
+            return self._materials
+
+    def get_segment_material(self, segment_id: int) -> Optional[str]:
+        """Get material for a specific segment ID."""
+        with self._lock:
+            if self._materials is None:
+                return None
+            return self._materials.get(segment_id)
 
 segmentation_store = SegmentationStore()
 

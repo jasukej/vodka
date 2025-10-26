@@ -29,9 +29,9 @@ class Config:
 
     # ============ CAMERA & DETECTION CONFIG ============
     # Mock modes for development/testing
-    MOCK_CAMERA = os.getenv('MOCK_CAMERA', 'true').lower() == 'true'
-    MOCK_DETECTION = os.getenv('MOCK_DETECTION', 'true').lower() == 'true'
-    MOCK_COORDINATES = os.getenv('MOCK_COORDINATES', 'true').lower() == 'true'
+    MOCK_CAMERA = os.getenv('MOCK_CAMERA', 'false').lower() == 'true'
+    MOCK_DETECTION = os.getenv('MOCK_DETECTION', 'false').lower() == 'true'
+    MOCK_COORDINATES = os.getenv('MOCK_COORDINATES', 'false').lower() == 'true'
     SHOW_DEBUG_WINDOW = os.getenv('SHOW_DEBUG_WINDOW', 'false').lower() == 'true'
 
     DRUMSTICK_MODEL_SIZE = os.getenv('DRUMSTICK_MODEL_SIZE', 'medium')

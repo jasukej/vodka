@@ -16,12 +16,17 @@ pyserial>=3.5
 # Audio
 pygame>=2.6.0
 
-# ML 
+# ML
 requests>=2.31.0
 python-dotenv>=1.0.0
 
 # YOLO for local test
 ultralytics>=8.3.0  # YOLOv10 support
+
+# Material Classification (M1-optimized)
+torch>=2.0.0
+torchvision>=0.15.0
+transformers>=4.30.0
 
 # Utilities
 scipy==1.11.4

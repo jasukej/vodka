@@ -19,6 +19,8 @@ from services.segmentation_store import segmentation_store
 from services.frame_buffer import frame_buffer
 from services.hit_localizer import hit_localizer
 from services.drumstick_detector import drumstick_detector
+from services.material_classifier import material_classifier
+from services.object_aware_material_classifier import object_aware_material_classifier
 
 load_dotenv()
 
@@ -87,16 +89,21 @@ async def handle_esp32_hit(impact_data: dict):
 
             segment_list = segments.get('segments', [])
             class_name = 'unknown'
+            material = 'unknown'
             if segment_id >= 0 and segment_id < len(segment_list):
                 class_name = segment_list[segment_id].get('class_name', 'unknown')
 
+            # Get material classification
+            material = segmentation_store.get_segment_material(segment_id) or 'unknown'
+
             logger.info(f'HIT LOCALIZED:')
             logger.info(f'   Object: {class_name.upper()}')
+            logger.info(f'   Material: {material.upper()}')
             logger.info(f'   Drum Pad: {drum.upper()}')
             logger.info(f'   Confidence: {conf:.2f}')
             logger.info(f'   Position: ({pos.get("x", 0):.0f}, {pos.get("y", 0):.0f})')
 
-            # Play sound based on detected drum pad class
+            # Play sound based on detected drum pad class and material
             sound_mapper.audio_player.play_drum_sound(class_name, intensity)
 
             # Emit to connected clients via SocketIO
@@ -110,6 +117,7 @@ async def handle_esp32_hit(impact_data: dict):
                 'segment_id': segment_id,
                 'bbox': bbox,
                 'class_name': class_name,
+                'material': material,
                 'drumstick_position': hit_result.get('drumstick_position'),
                 'source': 'esp32'
             })
@@ -283,6 +291,24 @@ def handle_calibrate_frame(data):
         segmentation_store.store_segments(segmentation_result, timestamp / 1000.0 if timestamp else None)
         logger.info(f'Segments stored in memory')
 
+        # Run object-aware material classification (should be more accurate)
+        logger.info('Starting object-aware material classification...')
+        try:
+            materials = object_aware_material_classifier.classify_segments(frame_data, segmentation_result)
+            segmentation_store.store_materials(materials)
+            logger.info(f'Object-aware material classification complete: {len(materials)} segments classified')
+        except Exception as e:
+            logger.error(f'Object-aware material classification failed, falling back to standard: {e}')
+            try:
+                materials = material_classifier.classify_segments(frame_data, segmentation_result)
+                segmentation_store.store_materials(materials)
+                logger.info(f'Fallback material classification complete: {len(materials)} segments classified')
+            except Exception as e2:
+                logger.error(f'All material classification failed: {e2}')
+                import traceback
+                traceback.print_exc()
+                materials = {}
+
         emit('calibration_result', {
             'status': 'success',
             'segment_count': segment_count,
@@ -294,7 +320,8 @@ def handle_calibrate_frame(data):
                     'bbox': seg.get('bbox'),
                     'confidence': seg.get('confidence'),
                     'class': seg.get('class'),
-                    'class_name': seg.get('class_name', 'unknown')
+                    'class_name': seg.get('class_name', 'unknown'),
+                    'material': materials.get(seg.get('id'), 'unknown')
                 }
                 for seg in segments
             ]
@@ -366,16 +393,21 @@ def handle_simulate_hit(data):
 
         segment_list = segments.get('segments', [])
         class_name = 'unknown'
+        material = 'unknown'
         if segment_id >= 0 and segment_id < len(segment_list):
             class_name = segment_list[segment_id].get('class_name', 'unknown')
 
+        # Get material classification
+        material = segmentation_store.get_segment_material(segment_id) or 'unknown'
+
         logger.info(f'HIT LOCALIZED:')
         logger.info(f'   Object: {class_name.upper()}')
+        logger.info(f'   Material: {material.upper()}')
         logger.info(f'   Drum Pad: {drum.upper()}')
         logger.info(f'   Confidence: {conf:.2f}')
         logger.info(f'   Position: ({pos.get("x", 0):.0f}, {pos.get("y", 0):.0f})')
 
-        # Play sound based on detected drum pad class
+        # Play sound based on detected drum pad class and material
         sound_mapper.audio_player.play_drum_sound(class_name, intensity)
 
         emit('hit_localized', {
@@ -388,6 +420,7 @@ def handle_simulate_hit(data):
             'segment_id': segment_id,
             'bbox': bbox,
             'class_name': class_name,
+            'material': material,
             'drumstick_position': hit_result.get('drumstick_position'),
             'source': 'manual'
         })
