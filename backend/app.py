@@ -18,6 +18,7 @@ from services.model_service import model_service
 from services.segmentation_store import segmentation_store
 from services.frame_buffer import frame_buffer
 from services.hit_localizer import hit_localizer
+from services.drumstick_detector import drumstick_detector
 
 load_dotenv()
 
@@ -287,7 +288,8 @@ def handle_simulate_hit(data):
             'timestamp': data.get('timestamp'),
             'segment_id': segment_id,
             'bbox': bbox,
-            'class_name': class_name
+            'class_name': class_name,
+            'drumstick_position': hit_result.get('drumstick_position')
         })
     else:
         logger.error('Hit localization failed')
@@ -297,6 +299,71 @@ def handle_simulate_hit(data):
         })
 
     logger.info('=' * 70)
+
+@socketio.on('detect_drumstick')
+def handle_detect_drumstick(data):
+    frame_data = data.get('frame')
+    timestamp = data.get('timestamp')
+    confidence_threshold = data.get('confidence', 0.25)
+    
+    if not frame_data:
+        logger.error('Drumstick detection called without frame data')
+        emit('drumstick_detected', {
+            'status': 'error',
+            'message': 'No frame data provided',
+            'timestamp': timestamp
+        })
+        return
+    
+    logger.info('🥢 ' + '=' * 68)
+    logger.info(f'DRUMSTICK DETECTION STARTED (confidence: {confidence_threshold})')
+    logger.info('=' * 70)
+    
+    detection_result = drumstick_detector.detect_drumsticks(frame_data, confidence_threshold)
+    
+    if detection_result and detection_result.get('success'):
+        detections = detection_result.get('detections', [])
+        detection_count = len(detections)
+        
+        logger.info(f'Detection complete: {detection_count} drumstick(s) detected')
+        
+        if detection_count > 0:
+            logger.info('🥢 Detected drumsticks:')
+            for i, det in enumerate(detections):
+                bbox = det.get('bbox', [0, 0, 0, 0])
+                conf = det.get('confidence', 0)
+                class_name = det.get('class_name', 'unknown')
+                center = det.get('center', {'x': 0, 'y': 0})
+                logger.info(f'   #{i}: {class_name.upper()} - bbox=({bbox[0]:3d}, {bbox[1]:3d}, {bbox[2]:3d}, {bbox[3]:3d}), center=({center["x"]:3d}, {center["y"]:3d}), conf={conf:.2f}')
+        
+        emit('drumstick_detected', {
+            'status': 'success',
+            'detection_count': detection_count,
+            'timestamp': timestamp,
+            'message': f"Detected {detection_count} drumstick(s)",
+            'detections': [
+                {
+                    'id': det.get('id'),
+                    'bbox': det.get('bbox'),
+                    'confidence': det.get('confidence'),
+                    'class': det.get('class'),
+                    'class_name': det.get('class_name', 'unknown'),
+                    'center': det.get('center'),
+                    'area': det.get('area')
+                }
+                for det in detections
+            ]
+        })
+        logger.info(f'DRUMSTICK DETECTION SUCCESS')
+        logger.info('=' * 70)
+    else:
+        logger.error('Drumstick detection failed or returned no results')
+        emit('drumstick_detected', {
+            'status': 'error',
+            'message': 'Failed to detect drumsticks',
+            'timestamp': timestamp
+        })
+        logger.error('=' * 70)
 
 if __name__ == '__main__':
     print("\n" + "="*60)
