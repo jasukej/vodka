@@ -36,7 +36,8 @@ class SoundMapper:
             "material": impact.material,
             "position": impact.position,
             "velocity": impact.velocity,
-            "timestamp": impact.timestamp
+            "timestamp": impact.timestamp,
+            "id": impact.id
         }
 
     def cleanup(self):

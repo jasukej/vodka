@@ -14,6 +14,7 @@ class ImpactEvent:
     velocity: float
     magnitude: float
     timestamp: int
+    id: int
     position: Optional[Tuple[int, int]] = None
     material: Optional[str] = None
 
@@ -25,7 +26,8 @@ class HitDetector:
         impact = ImpactEvent(
             velocity=data.get("velocity", 0),
             magnitude=data["magnitude"],
-            timestamp=data["timestamp"]
+            timestamp=data["timestamp"],
+            id=data["id"]
         )
 
         # Note: technically magnitude is just 0.1 * velocity,

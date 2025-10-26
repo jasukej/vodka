@@ -38,7 +38,8 @@ class SensorIngestion:
                         "type": "ack",
                         "material": result["material"],
                         "position": result["position"],
-                        "velocity": result["velocity"]
+                        "velocity": result["velocity"],
+                        "id": result["id"]
                     }
             return {"type": "ack", "status": "received"}
 

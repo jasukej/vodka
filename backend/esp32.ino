@@ -8,55 +8,66 @@
  * - (Optional) Adafruit Unified Sensor - only if MOCK_MODE = false
  */
 
-// ============ MOCK MODE - SET TO false WHEN YOU HAVE MPU6050 ============
-#define MOCK_MODE true  // Set to false when hardware is connected
-// ========================================================================
 
 #include <WiFi.h>
 #include <ArduinoWebsockets.h>
 
-#if !MOCK_MODE
 #include <Adafruit_MPU6050.h>
 #include <Adafruit_Sensor.h>
 #include <Wire.h>
-#endif
 
 using namespace websockets;
 
 // WiFi credentials
-const char* ssid = "iPhone (280)";
-const char* password = "432101234";
+const char* ssid = "*Hidden Network*";
+const char* password = "AliceInBorderland!";
 
 // WebSocket server (your computer's IP)
-const char* ws_server = "172.20.10.4";
+const char* ws_server = "192.168.0.106";
 const int ws_port = 8080;
 
 WebsocketsClient client;
 
-#if MOCK_MODE
-// Mock mode: use button or timer to simulate impacts
-const int BUTTON_PIN = 0;  // Boot button on most ESP32 boards
-bool lastButtonState = HIGH;
-unsigned long mockTimer = 0;
-const int MOCK_INTERVAL = 2000;  // Send mock impact every 2 seconds
-#else
 Adafruit_MPU6050 mpu;
 // Impact detection parameters
 const float IMPACT_THRESHOLD = 15.0;  // m/s^2 (tune this!)
 const int COOLDOWN_MS = 100;          // Min time between hits
 unsigned long lastHitTime = 0;
 float accel_offset = 0;
-#endif
+
+// Function to reset and reinitialize the MPU6050
+bool resetMPU6050() {
+  Serial.println("Attempting to reset MPU6050...");
+
+  // Reset I2C bus
+  Wire.end();
+  delay(100);
+  Wire.begin();
+  delay(100);
+
+  // Wake up MPU6050
+  Wire.beginTransmission(0x68);
+  Wire.write(0x6B);  // PWR_MGMT_1 register
+  Wire.write(0);     // Wake up
+  Wire.endTransmission(true);
+  delay(100);
+
+  // Reinitialize
+  if (!mpu.begin()) {
+    Serial.println("Reset failed!");
+    return false;
+  }
+
+  mpu.setAccelerometerRange(MPU6050_RANGE_8_G);
+  mpu.setGyroRange(MPU6050_RANGE_500_DEG);
+  mpu.setFilterBandwidth(MPU6050_BAND_5_HZ);
+
+  Serial.println("MPU6050 reset successful!");
+  return true;
+}
 
 void setup() {
   Serial.begin(115200);
-
-#if MOCK_MODE
-  Serial.println("Starting drumstick in MOCK MODE...");
-  Serial.println("Press BOOT button to simulate impact");
-  Serial.println("Or wait for automatic impacts every 2 seconds");
-  pinMode(BUTTON_PIN, INPUT_PULLUP);
-#else
   Serial.println("Starting drumstick with MPU6050...");
 
   // Initialize MPU6050
@@ -73,7 +84,6 @@ void setup() {
 
   // Calibrate (assumes drumstick at rest)
   calibrate();
-#endif
 
   // Connect to WiFi
   WiFi.begin(ssid, password);
@@ -116,7 +126,6 @@ void connectWebSocket() {
   }
 }
 
-#if !MOCK_MODE
 void calibrate() {
   Serial.println("Calibrating... keep drumstick still");
   float sum = 0;
@@ -136,7 +145,6 @@ void calibrate() {
   Serial.print("Calibration complete. Offset: ");
   Serial.println(accel_offset);
 }
-#endif
 
 void loop() {
   // Keep WebSocket alive
@@ -148,30 +156,18 @@ void loop() {
     delay(1000);
   }
 
-#if MOCK_MODE
-  // Mock mode: button or timer triggers
-  unsigned long now = millis();
-
-  // Check button
-  bool buttonState = digitalRead(BUTTON_PIN);
-  if (buttonState == LOW && lastButtonState == HIGH) {
-    sendMockImpact();
-    delay(50);  // Debounce
-  }
-  lastButtonState = buttonState;
-
-  // Or automatic timer
-  if (now - mockTimer > MOCK_INTERVAL) {
-    mockTimer = now;
-    // sendMockImpact();
-  }
-
-  delay(50);
-
-#else
   // Real MPU6050 mode
   sensors_event_t a, g, temp;
   mpu.getEvent(&a, &g, &temp);
+
+  // Check if readings are all zeros (indicates stuck sensor)
+  if (a.acceleration.x == 0 && a.acceleration.y == 0 && a.acceleration.z == 0 &&
+      g.gyro.x == 0 && g.gyro.y == 0 && g.gyro.z == 0) {
+    Serial.println("⚠️ Zero readings detected - resetting MPU6050...");
+    resetMPU6050();
+    delay(500);
+    return;
+  }
 
   // Calculate acceleration magnitude (subtract gravity)
   float magnitude = sqrt(a.acceleration.x * a.acceleration.x +
@@ -189,10 +185,12 @@ void loop() {
     float velocity = magnitude * 0.01;
 
     sendImpact(velocity, magnitude);
+  } else {
+    // Serial.print("Magnitude: ");
+    // Serial.println(magnitude);
   }
 
   delay(10);  // 100Hz sampling rate
-#endif
 }
 
 void sendImpact(float velocity, float magnitude) {
@@ -200,7 +198,8 @@ void sendImpact(float velocity, float magnitude) {
 
   String json = "{\"type\":\"impact\",\"velocity\":" + String(velocity, 2) +
                 ",\"magnitude\":" + String(magnitude, 2) +
-                ",\"timestamp\":" + String(now) + "}";
+                ",\"timestamp\":" + String(now) +
+                ",\"id\":" + 1 + "}";
 
   client.send(json);
 
@@ -209,15 +208,3 @@ void sendImpact(float velocity, float magnitude) {
   Serial.print(" m/s^2, Velocity: ");
   Serial.println(velocity);
 }
-
-#if MOCK_MODE
-void sendMockImpact() {
-  // Generate random velocity between 0.5 and 2.0
-  float velocity = random(50, 200) / 100.0;
-  float magnitude = velocity / 0.01;  // Reverse calculation
-
-  sendImpact(velocity, magnitude);
-
-  Serial.println("(Mock impact sent)");
-}
-#endif
