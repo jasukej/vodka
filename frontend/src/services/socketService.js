@@ -97,12 +97,6 @@ if (typeof window !== 'undefined') {
     
     socketService.emit('simulate_hit', hitData);
     console.log('🥁 Hit simulated:', hitData);
-    
-    if (x !== null && y !== null) {
-      console.log(`   Position: (${x}, ${y})`);
-    } else {
-      console.log('   Position: Not specified (will use fallback to largest segment)');
-    }
   };
   
   window.testPositions = () => {

@@ -146,9 +146,10 @@ def handle_video_frame(data):
     frame_data = data.get('frame')
 
     if frame_data:
-        frame_buffer.add_frame(frame_data, timestamp / 1000.0 if timestamp else None)
+        frame_timestamp = timestamp / 1000.0 if timestamp else None
+        frame_buffer.add_frame(frame_data, frame_timestamp)
         buffer_size = frame_buffer.get_buffer_size()
-        logger.debug(f'Frame buffered (buffer: {buffer_size} frames)')
+        logger.info(f'📸 Frame buffered: timestamp={frame_timestamp:.3f}, size={len(frame_data)} bytes, buffer={buffer_size} frames')
     else:
         logger.warning('Received video frame without frame data')
 
@@ -249,7 +250,13 @@ def handle_simulate_hit(data):
         })
         logger.info('=' * 70)
         return
-
+    
+    # TODO: delete later
+    frame_timestamp = latest_frame.get('timestamp', 0)
+    frame_data_size = len(latest_frame.get('frame', ''))
+    frame_data_hash = hash(latest_frame.get('frame', '')) % 1000000  # Short hash for logging
+    logger.info(f'📸 Using frame from buffer: timestamp={frame_timestamp:.3f}, size={frame_data_size} bytes, hash={frame_data_hash}')
+    
     segments = segmentation_store.get_segments()
     segment_count = len(segments.get('segments', []))
     logger.info(f'Using calibration with {segment_count} segments')
@@ -258,7 +265,7 @@ def handle_simulate_hit(data):
         latest_frame,
         segments,
         hit_timestamp,
-        position
+        None  # no manual pos: use YOLOv8nano detection
     )
 
     if hit_result:
@@ -304,7 +311,7 @@ def handle_simulate_hit(data):
 def handle_detect_drumstick(data):
     frame_data = data.get('frame')
     timestamp = data.get('timestamp')
-    confidence_threshold = data.get('confidence', 0.25)
+    confidence_threshold = data.get('confidence', 0.15)
     
     if not frame_data:
         logger.error('Drumstick detection called without frame data')

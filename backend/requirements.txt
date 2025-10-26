@@ -21,7 +21,7 @@ requests>=2.31.0
 python-dotenv>=1.0.0
 
 # YOLO for local test
-# ultralytics==8.0.200
+ultralytics>=8.3.0  # YOLOv10 support
 
 # Utilities
 scipy==1.11.4

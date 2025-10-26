@@ -66,13 +66,25 @@ function App() {
             console.log('Bounding Box:', `[${data.bbox[0]}, ${data.bbox[1]}, ${data.bbox[2]}, ${data.bbox[3]}]`);
           }
           
+          // TODO: delete later
+          if (data.drumstick_position) {
+            console.log('%c🥢 YOLOv8nano Detection:', 'font-size: 14px; font-weight: bold; color: orange');
+            console.log('Drumstick Position:', `(${Math.round(data.drumstick_position.x)}, ${Math.round(data.drumstick_position.y)})`);
+            console.log('Drumstick Confidence:', (data.drumstick_position.confidence * 100).toFixed(1) + '%');
+            console.log('Drumstick Class:', data.drumstick_position.class_name || 'unknown');
+          } else {
+            console.log('%c🥢 YOLOv8nano Detection:', 'font-size: 14px; font-weight: bold; color: orange');
+            console.log('⚠️ No drumstick detected - using fallback to largest segment');
+          }
+          
           const newHit = { 
             drum: data.drum_pad, 
             position: data.position,
             intensity: data.intensity,
             timestamp: data.timestamp,
             segment_id: data.segment_id,
-            class_name: data.class_name
+            class_name: data.class_name,
+            drumstick_position: data.drumstick_position
           };
           setHits(prev => [...prev, newHit]);
           setLastHit(newHit);

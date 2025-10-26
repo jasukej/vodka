@@ -1,0 +1,19 @@
+environment_variables: {}
+external_package_dirs: []
+model_metadata: {}
+model_name: drumstick-detect
+python_version: py39
+requirements:
+  - ultralytics==8.0.196
+  - pillow==10.0.0
+  - numpy==1.24.3
+  - opencv-python-headless==4.8.0.74
+resources:
+  accelerator: T4
+  cpu: '2'
+  memory: 8Gi
+  use_gpu: true
+secrets: {}
+system_packages:
+  - libgl1-mesa-glx
+  - libglib2.0-0

@@ -34,6 +34,8 @@ class Config:
     MOCK_COORDINATES = os.getenv('MOCK_COORDINATES', 'true').lower() == 'true'
     SHOW_DEBUG_WINDOW = os.getenv('SHOW_DEBUG_WINDOW', 'false').lower() == 'true'
 
+    DRUMSTICK_MODEL_SIZE = os.getenv('DRUMSTICK_MODEL_SIZE', 'medium')
+
     # Camera settings
     CAMERA_INDEX = int(os.getenv('CAMERA_INDEX', 0))
     CAMERA_WIDTH = int(os.getenv('CAMERA_WIDTH', 640))
@@ -49,11 +51,10 @@ class Config:
         (320, 240, 640, 480, "plastic"),    # Bottom-right quadrant
     ]
 
-    # Sound mapping
     SOUND_MAPPING = {
-        "wood": "sounds/bass.ogg",
-        "metal": "sounds/iron_xylophone.ogg",
-        "glass": "sounds/hat.ogg",
-        "plastic": "sounds/snare.ogg",
-        "default": "sounds/harp.ogg"
+        "wood": os.path.join(os.path.dirname(os.path.dirname(__file__)), "sounds", "bass.ogg"),
+        "metal": os.path.join(os.path.dirname(os.path.dirname(__file__)), "sounds", "iron_xylophone.ogg"),
+        "glass": os.path.join(os.path.dirname(os.path.dirname(__file__)), "sounds", "hat.ogg"),
+        "plastic": os.path.join(os.path.dirname(os.path.dirname(__file__)), "sounds", "snare.ogg"),
+        "default": os.path.join(os.path.dirname(os.path.dirname(__file__)), "sounds", "harp.ogg")
     }

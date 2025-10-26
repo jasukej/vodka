@@ -1,6 +1,7 @@
 import logging
 from typing import Dict, Any, Optional, List
 import numpy as np
+from services.drumstick_detector import drumstick_detector
 
 logger = logging.getLogger(__name__)
 
@@ -32,7 +33,13 @@ class HitLocalizer:
             logger.warning("Empty segment list")
             return None
         
-        selected_segment = self._select_segment(segment_list, hit_position)
+        # Use YOLOv8nano to detect actual drumstick position
+        actual_hit_position = self._get_drumstick_position(frame)
+        
+        # Always use YOLOv8nano detection - ignore manual position parameter
+        position_to_use = actual_hit_position
+        
+        selected_segment = self._select_segment(segment_list, position_to_use)
         
         if not selected_segment:
             logger.warning("Could not select a segment for hit")
@@ -53,11 +60,38 @@ class HitLocalizer:
             'position': position,
             'confidence': selected_segment.get('confidence', 0.0),
             'timestamp': hit_timestamp,
-            'bbox': bbox
+            'bbox': bbox,
+            'drumstick_position': actual_hit_position
         }
         
         logger.info(f"Hit localized to {drum_pad} (segment {segment_id})")
+        if actual_hit_position:
+            logger.info(f"🥢 YOLOv8nano detected drumstick at ({actual_hit_position['x']:.0f}, {actual_hit_position['y']:.0f})")
+        else:
+            logger.warning("🥢 YOLOv8nano detected NO drumstick - using fallback to largest segment")
         return result
+    
+    def _get_drumstick_position(self, frame: Dict[str, Any]) -> Optional[Dict[str, float]]:
+        """Get drumstick position from frame using YOLOv8nano detection"""
+        try:
+            frame_data = frame.get('frame')  # Frame buffer stores as 'frame', not 'data'
+            if not frame_data:
+                logger.warning("No frame data available for drumstick detection")
+                return None
+            
+            logger.info("🥢 Running YOLOv8nano inference for hit localization...")
+            drumstick_position = drumstick_detector.get_best_drumstick_position(frame_data)
+            
+            if drumstick_position:
+                logger.info(f"🥢 YOLOv8nano inference successful: drumstick at ({drumstick_position['x']:.0f}, {drumstick_position['y']:.0f})")
+            else:
+                logger.warning("🥢 YOLOv8nano inference returned no drumstick position")
+            
+            return drumstick_position
+            
+        except Exception as e:
+            logger.error(f"Error in YOLOv8nano drumstick detection: {e}")
+            return None
     
     def _select_segment(
         self, 
