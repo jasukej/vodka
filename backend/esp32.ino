@@ -31,9 +31,74 @@ WebsocketsClient client;
 Adafruit_MPU6050 mpu;
 // Impact detection parameters
 const float IMPACT_THRESHOLD = 15.0;  // m/s^2 (tune this!)
-const int COOLDOWN_MS = 100;          // Min time between hits
+const int COOLDOWN_MS = 50;          // Min time between hits
 unsigned long lastHitTime = 0;
 float accel_offset = 0;
+
+float gravity_x = 0;
+float gravity_y = 0;
+float gravity_z = 0;
+const float GRAVITY_ALPHA = 0.98;
+
+// Add these at the top with your other variables
+struct Vec3 {
+  float x, y, z;
+};
+
+float vec3_magnitude(Vec3 v) {
+  return sqrt(v.x*v.x + v.y*v.y + v.z*v.z);
+}
+
+void vec3_normalize(Vec3* v) {
+  float mag = vec3_magnitude(*v);
+  if (mag > 0.001) {
+    v->x /= mag;
+    v->y /= mag;
+    v->z /= mag;
+  }
+}
+
+float vec3_dot(Vec3 a, Vec3 b) {
+  return a.x*b.x + a.y*b.y + a.z*b.z;
+}
+
+String getStrikeDirection(Vec3 impact_vector, Vec3 gravity_vector) {
+  // Normalize both vectors
+  vec3_normalize(&impact_vector);
+  vec3_normalize(&gravity_vector);
+
+  // Calculate dot product to find angle with gravity
+  float dot = vec3_dot(impact_vector, gravity_vector);
+
+  // Project impact onto horizontal plane (perpendicular to gravity)
+  Vec3 horizontal;
+  horizontal.x = impact_vector.x - dot * gravity_vector.x;
+  horizontal.y = impact_vector.y - dot * gravity_vector.y;
+  horizontal.z = impact_vector.z - dot * gravity_vector.z;
+  float horizontal_mag = vec3_magnitude(horizontal);
+
+  // Determine primary direction
+  if (dot > 0.7) {
+    return "DOWN";
+  } else if (dot < -0.7) {
+    return "UP";
+  } else if (horizontal_mag > 0.3) {
+    vec3_normalize(&horizontal);
+
+    float abs_x = abs(horizontal.x);
+    float abs_y = abs(horizontal.y);
+    float abs_z = abs(horizontal.z);
+
+    if (abs_x > abs_y && abs_x > abs_z) {
+      return horizontal.x > 0 ? "HORIZONTAL_POS_X" : "HORIZONTAL_NEG_X";
+    } else if (abs_y > abs_z) {
+      return horizontal.y > 0 ? "HORIZONTAL_POS_Y" : "HORIZONTAL_NEG_Y";
+    } else {
+      return horizontal.z > 0 ? "HORIZONTAL_POS_Z" : "HORIZONTAL_NEG_Z";
+    }
+  }
+  return "DIAGONAL";
+}
 
 // Function to reset and reinitialize the MPU6050
 bool resetMPU6050() {
@@ -169,10 +234,18 @@ void loop() {
     return;
   }
 
-  // Calculate acceleration magnitude (subtract gravity)
-  float magnitude = sqrt(a.acceleration.x * a.acceleration.x +
-                        a.acceleration.y * a.acceleration.y +
-                        a.acceleration.z * a.acceleration.z);
+  // Update gravity vector with low-pass filter
+  gravity_x = GRAVITY_ALPHA * gravity_x + (1 - GRAVITY_ALPHA) * a.acceleration.x;
+  gravity_y = GRAVITY_ALPHA * gravity_y + (1 - GRAVITY_ALPHA) * a.acceleration.y;
+  gravity_z = GRAVITY_ALPHA * gravity_z + (1 - GRAVITY_ALPHA) * a.acceleration.z;
+
+  // Calculate motion (subtract gravity)
+  float motion_x = a.acceleration.x - gravity_x;
+  float motion_y = a.acceleration.y - gravity_y;
+  float motion_z = a.acceleration.z - gravity_z;
+
+  float magnitude = sqrt(motion_x * motion_x + motion_y * motion_y + motion_z * motion_z);
+
 
   magnitude = abs(magnitude - accel_offset);
 
@@ -181,10 +254,16 @@ void loop() {
   if (magnitude > IMPACT_THRESHOLD && (now - lastHitTime) > COOLDOWN_MS) {
     lastHitTime = now;
 
+    Vec3 impact = {motion_x, motion_y, motion_z};
+    Vec3 gravity = {gravity_x, gravity_y, gravity_z};
+    String direction = getStrikeDirection(impact, gravity);
+
     // Calculate velocity (simplified: v = a * dt, assuming 10ms sampling)
     float velocity = magnitude * 0.01;
 
-    sendImpact(velocity, magnitude);
+    if (direction == "DOWN") {
+      sendImpact(velocity, magnitude);
+    }
   } else {
     // Serial.print("Magnitude: ");
     // Serial.println(magnitude);
