@@ -28,8 +28,12 @@ logger = logging.getLogger(__name__)
 app = Flask(__name__)
 app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', 'your-secret-key')
 CORS(app)
+
+# Initialize Socket.IO for frontend
+socketio = SocketIO(app, cors_allowed_origins="*", async_mode='threading', logger=False, engineio_logger=False)
+
+# Initialize Flask-Sock for ESP32 raw WebSocket
 sock = Sock(app)
-socketio = SocketIO(app, cors_allowed_origins="*")
 
 # Initialize services
 sound_mapper = SoundMapper()
@@ -41,27 +45,27 @@ async def handle_esp32_hit(impact_data: dict):
         timestamp = impact_data.get('timestamp', int(time.time() * 1000))
         velocity = impact_data.get('velocity', 0)
         magnitude = impact_data.get('magnitude', 0)
-        
+
         # Calculate intensity from velocity (normalize to 0-1 range)
         intensity = min(velocity / 100.0, 1.0) if velocity > 0 else 0.5
-        
+
         logger.info(f'🥁 ESP32 HIT DETECTED: velocity={velocity}, magnitude={magnitude}, intensity={intensity:.2f}')
-        
+
         # Trigger the same logic as simulate_hit
         if not segmentation_store.is_calibrated():
             logger.warning('System not calibrated - cannot localize hit')
             return
-        
+
         latest_frame = frame_buffer.get_latest_frame()
         if not latest_frame:
             logger.warning('No frame available in buffer')
             return
-        
+
         frame_timestamp = latest_frame.get('timestamp', 0)
         frame_data_size = len(latest_frame.get('frame', ''))
         frame_data_hash = hash(latest_frame.get('frame', '')) % 1000000
         logger.info(f'📸 Using frame from buffer: timestamp={frame_timestamp:.3f}, size={frame_data_size} bytes, hash={frame_data_hash}')
-        
+
         segments = segmentation_store.get_segments()
         segment_count = len(segments.get('segments', []))
         logger.info(f'Using calibration with {segment_count} segments')
@@ -73,28 +77,28 @@ async def handle_esp32_hit(impact_data: dict):
             timestamp / 1000.0,
             None
         )
-        
+
         if hit_result:
             drum = hit_result['drum_pad']
             conf = hit_result['confidence']
             pos = hit_result['position']
             segment_id = hit_result.get('segment_id', -1)
             bbox = hit_result.get('bbox', [])
-            
+
             segment_list = segments.get('segments', [])
             class_name = 'unknown'
             if segment_id >= 0 and segment_id < len(segment_list):
                 class_name = segment_list[segment_id].get('class_name', 'unknown')
-            
+
             logger.info(f'HIT LOCALIZED:')
             logger.info(f'   Object: {class_name.upper()}')
             logger.info(f'   Drum Pad: {drum.upper()}')
             logger.info(f'   Confidence: {conf:.2f}')
             logger.info(f'   Position: ({pos.get("x", 0):.0f}, {pos.get("y", 0):.0f})')
-            
+
             # Play sound based on detected drum pad class
             sound_mapper.audio_player.play_drum_sound(class_name, intensity)
-            
+
             # Emit to connected clients via SocketIO
             socketio.emit('hit_localized', {
                 'status': 'success',
@@ -111,9 +115,9 @@ async def handle_esp32_hit(impact_data: dict):
             })
         else:
             logger.error('Hit localization failed')
-        
+
         logger.info('=' * 70)
-        
+
     except Exception as e:
         logger.error(f'Error handling ESP32 hit: {e}')
         import traceback
@@ -122,9 +126,8 @@ async def handle_esp32_hit(impact_data: dict):
 # Connect sensor ingestion callbacks
 sensor_ingestion.set_hit_detected_callback(handle_esp32_hit)
 
-# Store active WebSocket connections
-ws_clients = []
-drumstick_ws = None
+# Store active connections
+drumstick_sid = None
 
 @app.route('/')
 def index():
@@ -138,15 +141,56 @@ def index():
         "sensor_connected": sensor_ingestion.is_connected()
     }
 
-@sock.route('/drumstick')
-def handle_websocket(ws):
-    global drumstick_ws
-    print('Drumstick connected via WebSocket')
-    drumstick_ws = ws
-    sensor_ingestion.on_connect("ws_client")
+# ESP32 drumstick connection via Socket.IO
+@socketio.on('drumstick_connect')
+def handle_drumstick_connect(data):
+    global drumstick_sid
+    drumstick_sid = request.sid
+    print(f'Drumstick connected via Socket.IO: {drumstick_sid}')
+    sensor_ingestion.on_connect("socketio_client")
 
-    # Broadcast to monitors
-    broadcast_to_clients({'type': 'sensor_connected'})
+    # Broadcast to all clients
+    socketio.emit('sensor_connected', {'status': 'connected'}, broadcast=True)
+    emit('connection_ack', {'status': 'ok', 'timestamp': int(time.time() * 1000)})
+
+@socketio.on('drumstick_message')
+def handle_drumstick_message(data):
+    """Handle messages from ESP32 drumstick"""
+    print(f"Received from drumstick: {data}")
+
+    # Handle different message types
+    msg_type = data.get('type', 'impact')
+
+    if msg_type == 'ping':
+        emit('pong', {'type': 'pong', 'timestamp': int(time.time() * 1000)})
+
+    elif msg_type == 'impact' or 'velocity' in data:
+        # Process impact
+        response = asyncio.run(sensor_ingestion.handle_message(json.dumps(data)))
+
+        if response:
+            # Send ack back to ESP32
+            emit('impact_ack', response)
+
+            # Broadcast to all clients
+            if response.get('type') == 'ack' and 'material' in response:
+                socketio.emit('impact_processed', {'data': response})
+
+@socketio.on('disconnect')
+def handle_disconnect():
+    global drumstick_sid
+    if request.sid == drumstick_sid:
+        print('Drumstick disconnected')
+        drumstick_sid = None
+        sensor_ingestion.on_disconnect()
+        socketio.emit('sensor_disconnected', {'status': 'disconnected'})
+
+# ESP32 raw WebSocket endpoint via Flask-Sock
+@sock.route('/drumstick')
+def handle_esp32_websocket(ws):
+    """Handle raw WebSocket connection from ESP32"""
+    print('ESP32 Drumstick connected via raw WebSocket')
+    sensor_ingestion.on_connect("ws_client")
 
     try:
         while True:
@@ -154,75 +198,35 @@ def handle_websocket(ws):
             if message is None:
                 break
 
-            # Parse JSON message
             try:
                 data = json.loads(message)
-                print(f"Received from drumstick: {data}")
+                print(f"Received from ESP32: {data}")
 
-                # Handle different message types
-                msg_type = data.get('type', 'impact')  # Default to impact
+                msg_type = data.get('type', 'impact')
 
                 if msg_type == 'ping':
                     ws.send(json.dumps({'type': 'pong', 'timestamp': int(time.time() * 1000)}))
 
                 elif msg_type == 'impact' or 'velocity' in data:
-                    # Process impact
                     response = asyncio.run(sensor_ingestion.handle_message(json.dumps(data)))
 
                     if response:
-                        # Send ack back to ESP32
                         ws.send(json.dumps(response))
 
-                        # Broadcast to monitors
-                        if response.get('type') == 'ack' and 'material' in response:
-                            broadcast_to_clients({
-                                'type': 'impact_processed',
-                                'data': response
-                            })
-
             except json.JSONDecodeError:
-                print(f"Invalid JSON received: {message}")
+                print(f"Invalid JSON from ESP32: {message}")
             except Exception as e:
-                print(f"Error processing message: {e}")
+                print(f"Error processing ESP32 message: {e}")
+                import traceback
+                traceback.print_exc()
 
     except Exception as e:
-        print(f"WebSocket error: {e}")
+        print(f"ESP32 WebSocket error: {e}")
+        import traceback
+        traceback.print_exc()
     finally:
-        print('Drumstick disconnected')
-        drumstick_ws = None
+        print('ESP32 Drumstick disconnected')
         sensor_ingestion.on_disconnect()
-        broadcast_to_clients({'type': 'sensor_disconnected'})
-
-@sock.route('/monitor')
-def handle_monitor_websocket(ws):
-    print('Monitor client connected')
-    ws_clients.append(ws)
-
-    try:
-        ws.send(json.dumps({'type': 'connected', 'status': 'ok'}))
-        while True:
-            message = ws.receive()
-            if message is None:
-                break
-    except:
-        pass
-    finally:
-        if ws in ws_clients:
-            ws_clients.remove(ws)
-        print('Monitor client disconnected')
-
-def broadcast_to_clients(data):
-    disconnected = []
-    for ws in ws_clients:
-        try:
-            ws.send(json.dumps(data))
-        except:
-            disconnected.append(ws)
-
-    # Remove disconnected clients
-    for ws in disconnected:
-        if ws in ws_clients:
-            ws_clients.remove(ws)
 
 @socketio.on('video_frame')
 def handle_video_frame(data):
@@ -232,8 +236,9 @@ def handle_video_frame(data):
     if frame_data:
         frame_timestamp = timestamp / 1000.0 if timestamp else None
         frame_buffer.add_frame(frame_data, frame_timestamp)
-        buffer_size = frame_buffer.get_buffer_size()
-        logger.info(f'📸 Frame buffered: timestamp={frame_timestamp:.3f}, size={len(frame_data)} bytes, buffer={buffer_size} frames')
+        # Uncomment below for debugging frame buffering
+        # buffer_size = frame_buffer.get_buffer_size()
+        # logger.info(f'📸 Frame buffered: timestamp={frame_timestamp:.3f}, size={len(frame_data)} bytes, buffer={buffer_size} frames')
     else:
         logger.warning('Received video frame without frame data')
 
@@ -334,13 +339,13 @@ def handle_simulate_hit(data):
         })
         logger.info('=' * 70)
         return
-    
+
     # TODO: delete later
     frame_timestamp = latest_frame.get('timestamp', 0)
     frame_data_size = len(latest_frame.get('frame', ''))
     frame_data_hash = hash(latest_frame.get('frame', '')) % 1000000  # Short hash for logging
     logger.info(f'📸 Using frame from buffer: timestamp={frame_timestamp:.3f}, size={frame_data_size} bytes, hash={frame_data_hash}')
-    
+
     segments = segmentation_store.get_segments()
     segment_count = len(segments.get('segments', []))
     logger.info(f'Using calibration with {segment_count} segments')
@@ -369,10 +374,10 @@ def handle_simulate_hit(data):
         logger.info(f'   Drum Pad: {drum.upper()}')
         logger.info(f'   Confidence: {conf:.2f}')
         logger.info(f'   Position: ({pos.get("x", 0):.0f}, {pos.get("y", 0):.0f})')
-        
+
         # Play sound based on detected drum pad class
         sound_mapper.audio_player.play_drum_sound(class_name, intensity)
-        
+
         emit('hit_localized', {
             'status': 'success',
             'drum_pad': drum,
@@ -400,7 +405,7 @@ def handle_detect_drumstick(data):
     frame_data = data.get('frame')
     timestamp = data.get('timestamp')
     confidence_threshold = data.get('confidence', 0.15)
-    
+
     if not frame_data:
         logger.error('Drumstick detection called without frame data')
         emit('drumstick_detected', {
@@ -409,19 +414,19 @@ def handle_detect_drumstick(data):
             'timestamp': timestamp
         })
         return
-    
+
     logger.info('🥢 ' + '=' * 68)
     logger.info(f'DRUMSTICK DETECTION STARTED (confidence: {confidence_threshold})')
     logger.info('=' * 70)
-    
+
     detection_result = drumstick_detector.detect_drumsticks(frame_data, confidence_threshold)
-    
+
     if detection_result and detection_result.get('success'):
         detections = detection_result.get('detections', [])
         detection_count = len(detections)
-        
+
         logger.info(f'Detection complete: {detection_count} drumstick(s) detected')
-        
+
         if detection_count > 0:
             logger.info('🥢 Detected drumsticks:')
             for i, det in enumerate(detections):
@@ -430,7 +435,7 @@ def handle_detect_drumstick(data):
                 class_name = det.get('class_name', 'unknown')
                 center = det.get('center', {'x': 0, 'y': 0})
                 logger.info(f'   #{i}: {class_name.upper()} - bbox=({bbox[0]:3d}, {bbox[1]:3d}, {bbox[2]:3d}, {bbox[3]:3d}), center=({center["x"]:3d}, {center["y"]:3d}), conf={conf:.2f}')
-        
+
         emit('drumstick_detected', {
             'status': 'success',
             'detection_count': detection_count,
@@ -473,9 +478,12 @@ if __name__ == '__main__':
         print(f"  {i+1}. ({x_min:3d},{y_min:3d}) → ({x_max:3d},{y_max:3d}): {material}")
     print("="*60)
     print(f"Server running on http://0.0.0.0:8080")
-    print(f"WebSocket endpoints:")
-    print(f"  /drumstick - ESP32 connection")
-    print(f"  /monitor   - Frontend monitoring (optional)")
+    print(f"\nSocket.IO enabled for all clients:")
+    print(f"  Frontend: ws://localhost:8080/socket.io/")
+    print(f"    Events: video_frame, calibrate_frame, simulate_hit")
+    print(f"  ESP32: ws://192.168.0.106:8080/socket.io/")
+    print(f"    Events: esp32_connect, esp32_message")
+    print(f"\nNote: ESP32 needs Socket.IO client library")
     print("="*60 + "\n")
 
     # TODO: Classify materials once at startup

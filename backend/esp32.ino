@@ -135,6 +135,7 @@ void setup() {
   Serial.begin(115200);
   Serial.println("Starting drumstick with MPU6050...");
 
+  Wire.begin(18, 19);
   // Initialize MPU6050
   if (!mpu.begin()) {
     Serial.println("Failed to find MPU6050!");
@@ -278,7 +279,7 @@ void sendImpact(float velocity, float magnitude) {
   String json = "{\"type\":\"impact\",\"velocity\":" + String(velocity, 2) +
                 ",\"magnitude\":" + String(magnitude, 2) +
                 ",\"timestamp\":" + String(now) +
-                ",\"id\":" + 1 + "}";
+                ",\"id\":" + 2 + "}";
 
   client.send(json);
 
