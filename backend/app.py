@@ -2,23 +2,33 @@ from flask import Flask, render_template, request
 from flask_cors import CORS
 import os
 import time
+import logging
 from dotenv import load_dotenv
 import asyncio
 import cv2
 import json
 from threading import Thread
 from flask_sock import Sock
+from flask_socketio import SocketIO, emit
 
 from config import Config
 from services.sound_mapper import SoundMapper
 from services.sensor_ingestion import SensorIngestion
+from services.model_service import model_service
+from services.segmentation_store import segmentation_store
+from services.frame_buffer import frame_buffer
+from services.hit_localizer import hit_localizer
 
 load_dotenv()
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', 'your-secret-key')
 CORS(app)
 sock = Sock(app)
+socketio = SocketIO(app, cors_allowed_origins="*")
 
 # Initialize services
 sound_mapper = SoundMapper()
@@ -129,6 +139,165 @@ def broadcast_to_clients(data):
         if ws in ws_clients:
             ws_clients.remove(ws)
 
+@socketio.on('video_frame')
+def handle_video_frame(data):
+    timestamp = data.get('timestamp')
+    frame_data = data.get('frame')
+    
+    if frame_data:
+        frame_buffer.add_frame(frame_data, timestamp / 1000.0 if timestamp else None)
+        buffer_size = frame_buffer.get_buffer_size()
+        logger.debug(f'Frame buffered (buffer: {buffer_size} frames)')
+    else:
+        logger.warning('Received video frame without frame data')
+
+@socketio.on('calibrate_frame')
+def handle_calibrate_frame(data):
+    frame_data = data.get('frame')
+    timestamp = data.get('timestamp')
+    
+    if not frame_data:
+        logger.error('Calibrate frame called without frame data')
+        emit('calibration_result', {
+            'status': 'error',
+            'message': 'No frame data provided',
+            'timestamp': timestamp
+        })
+        return
+    
+    frame_size = len(frame_data)
+    logger.info('=' * 70)
+    logger.info(f'CALIBRATION STARTED (frame size: {frame_size} bytes)')
+    logger.info('=' * 70)
+    
+    segmentation_result = model_service.segment_frame(frame_data)
+    
+    if segmentation_result and segmentation_result.get('success'):
+        segment_count = segmentation_result.get('count', 0)
+        segments = segmentation_result.get('segments', [])
+        
+        logger.info(f'Segmentation complete: {segment_count} objects detected')
+        
+        if segment_count > 0:
+            logger.info('📊 Detected segments:')
+            for i, seg in enumerate(segments[:5]):
+                bbox = seg.get('bbox', [0, 0, 0, 0])
+                conf = seg.get('confidence', 0)
+                cls = seg.get('class', -1)
+                class_name = seg.get('class_name', 'unknown')
+                logger.info(f'   #{i}: {class_name.upper()} - bbox=({bbox[0]:3d}, {bbox[1]:3d}, {bbox[2]:3d}, {bbox[3]:3d}), conf={conf:.2f}')
+            if len(segments) > 5:
+                logger.info(f'   ... and {len(segments) - 5} more')
+        
+        segmentation_store.store_segments(segmentation_result, timestamp / 1000.0 if timestamp else None)
+        logger.info(f'Segments stored in memory')
+        
+        emit('calibration_result', {
+            'status': 'success',
+            'segment_count': segment_count,
+            'timestamp': timestamp,
+            'message': f"Calibrated with {segment_count} segments",
+            'segments': [
+                {
+                    'id': seg.get('id'),
+                    'bbox': seg.get('bbox'),
+                    'confidence': seg.get('confidence'),
+                    'class': seg.get('class'),
+                    'class_name': seg.get('class_name', 'unknown')
+                }
+                for seg in segments
+            ]
+        })
+        logger.info(f'CALIBRATION SUCCESS - Ready for hit detection')
+        logger.info('=' * 70)
+    else:
+        logger.error('Segmentation failed or returned no results')
+        emit('calibration_result', {
+            'status': 'error',
+            'message': 'Failed to segment frame',
+            'timestamp': timestamp
+        })
+        logger.error('=' * 70)
+
+@socketio.on('simulate_hit')
+def handle_simulate_hit(data):
+    hit_timestamp = data.get('timestamp', 0) / 1000.0
+    intensity = data.get('intensity', 1.0)
+    position = data.get('position')
+    
+    logger.info('🥁 ' + '=' * 68)
+    logger.info(f'HIT DETECTED (intensity: {intensity:.2f})')
+    if position:
+        logger.info(f'   Position: ({position.get("x", 0)}, {position.get("y", 0)})')
+    
+    if not segmentation_store.is_calibrated():
+        logger.warning('System not calibrated - cannot localize hit')
+        emit('hit_localized', {
+            'status': 'error',
+            'message': 'System not calibrated'
+        })
+        logger.info('=' * 70)
+        return
+    
+    latest_frame = frame_buffer.get_latest_frame()
+    if not latest_frame:
+        logger.warning('No frame available in buffer')
+        emit('hit_localized', {
+            'status': 'error',
+            'message': 'No frame available'
+        })
+        logger.info('=' * 70)
+        return
+    
+    segments = segmentation_store.get_segments()
+    segment_count = len(segments.get('segments', []))
+    logger.info(f'Using calibration with {segment_count} segments')
+    
+    hit_result = hit_localizer.localize_hit(
+        latest_frame,
+        segments,
+        hit_timestamp,
+        position
+    )
+    
+    if hit_result:
+        drum = hit_result['drum_pad']
+        conf = hit_result['confidence']
+        pos = hit_result['position']
+        segment_id = hit_result.get('segment_id', -1)
+        bbox = hit_result.get('bbox', [])
+        
+        segment_list = segments.get('segments', [])
+        class_name = 'unknown'
+        if segment_id >= 0 and segment_id < len(segment_list):
+            class_name = segment_list[segment_id].get('class_name', 'unknown')
+        
+        logger.info(f'HIT LOCALIZED:')
+        logger.info(f'   Object: {class_name.upper()}')
+        logger.info(f'   Drum Pad: {drum.upper()}')
+        logger.info(f'   Confidence: {conf:.2f}')
+        logger.info(f'   Position: ({pos.get("x", 0):.0f}, {pos.get("y", 0):.0f})')
+        
+        emit('hit_localized', {
+            'status': 'success',
+            'drum_pad': drum,
+            'position': pos,
+            'confidence': conf,
+            'intensity': intensity,
+            'timestamp': data.get('timestamp'),
+            'segment_id': segment_id,
+            'bbox': bbox,
+            'class_name': class_name
+        })
+    else:
+        logger.error('Hit localization failed')
+        emit('hit_localized', {
+            'status': 'error',
+            'message': 'Failed to localize hit'
+        })
+    
+    logger.info('=' * 70)
+
 if __name__ == '__main__':
     print("\n" + "="*60)
     print("VODKA Drumstick Server Starting")
@@ -155,7 +324,7 @@ if __name__ == '__main__':
     port = int(os.getenv('FLASK_PORT', 8080))
 
     try:
-        app.run(host='0.0.0.0', port=port, debug=True, use_reloader=False)
+        socketio.run(app, host='0.0.0.0', port=port, debug=True, use_reloader=False)
     finally:
         # Cleanup on shutdown
         sound_mapper.cleanup()

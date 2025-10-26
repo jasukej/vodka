@@ -16,7 +16,13 @@ class Config:
 
     HIT_THRESHOLD = 2.5  # g-force
     HIT_COOLDOWN = 0.1   # seconds
-
+    
+    CALIBRATION_INTERVAL = 5
+    CALIBRATION_INITIAL_DELAY = 5
+    # unused for now
+    FRAME_BUFFER_DURATION = 2
+    FRAME_BUFFER_MAX_FRAMES = 20
+    
     SOUNDS_DIR = '../sounds'
     MODELS_DIR = '../models'
     CONFIG_DIR = '../config'

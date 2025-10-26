@@ -73,12 +73,61 @@ virtual-drum-kit/
 - **Person 2:** Computer Vision + ML
 - **Person 3:** Web UI + Sound Engine
 
-## Hosted Model Integration
+## Model Integration - YOLO/FastSAM
 
-To use a hosted CV model (e.g., with Baseten):
-1. Set `USE_HOSTED_MODEL=true` in `.env`
-2. Add your API URL and key
-3. The system will fallback to local CV if the API fails
+### 🚀 Quick Start: Test Locally (No Deployment)
+
+Open http://localhost:5173 in your browser and click "Start Streaming".
+
+### Model Options
+
+**Option 1: Local YOLO (Development)**
+```bash
+pip install ultralytics
+python app.py
+```
+- ✅ No deployment needed
+- ✅ Real segmentation
+- ✅ Fast iteration
+
+**Option 2: Baseten (Production)**
+```bash
+# Deploy your model to Baseten
+# Update .env with endpoint
+python app.py
+```
+- ✅ GPU acceleration
+- ✅ Scalable
+- ✅ Production ready
+
+### Architecture
+
+- Webcam captures frames at 10fps
+- Frame buffer keeps last 2 seconds
+- Calibration runs: once, 2s after clicking "Start Streaming"
+- Segments stored in memory for hit localization
+- Hits map to nearest segment → drum pad
+
+## Testing
+
+### Hit Mapping & Segmentation Store Test
+```bash
+cd backend
+python3 test/test_hit_mapping.py
+```
+
+Verifies:
+- Segmentation store saves/retrieves segments
+- Hit localizer maps coordinates to objects
+- Object class names are properly associated
+
+### Simulate Hits via Browser Console
+```javascript
+socketService.emit('simulate_hit', {
+  intensity: 500,
+  timestamp: Date.now()
+});
+```
 
 ## Troubleshooting
 
